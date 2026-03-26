@@ -1,0 +1,10 @@
+{
+  "name": "glypho",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "build": "npm run build --workspace=packages/cli",
+    "test": "npm test --workspaces --if-present",
+    "publish:packages": "bash scripts/publish-packages.sh"
+  }
+}

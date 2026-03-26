@@ -1,0 +1,42 @@
+{
+  "name": "@glypho/cli",
+  "version": "0.1.0",
+  "description": "CLI tool for validating, converting, and rendering .g graph notation files",
+  "license": "MIT",
+  "author": "glypho-dev",
+  "homepage": "https://glypho.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/glypho-dev/glypho.git",
+    "directory": "packages/cli"
+  },
+  "keywords": ["graph", "diagram", "cli", "glypho", "mermaid", "dot", "converter"],
+  "type": "module",
+  "bin": {
+    "glypho": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "prebuild": "cd ../.. && npm run build --workspace=packages/renderer",
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc",
+    "pretest": "cd ../.. && npm run build --workspace=packages/cli",
+    "test": "vitest run",
+    "dev": "vitest"
+  },
+  "dependencies": {
+    "@glypho/parser": "0.1.0",
+    "@glypho/renderer": "0.1.0",
+    "@resvg/resvg-js": "^2.6.0",
+    "commander": "^13.0.0",
+    "gpt-tokenizer": "^2.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

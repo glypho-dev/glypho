@@ -1,0 +1,109 @@
+(* =============================================================================
+   .g Format Grammar - EBNF Specification
+
+   This file defines the formal grammar for the .g graph notation format.
+   See specification.md for complete documentation and usage examples.
+
+   Key constraints not expressible in EBNF:
+   - One statement per line (no multiple statements on same line)
+   - Comments must be on their own line (no end-of-line comments)
+   - Edge chains cannot have labels (use separate edge statements for labels)
+   - Size requires position (no standalone ^wxh)
+   - Positions use non-negative integers only (no decimals, no negatives)
+   ============================================================================= *)
+
+(* -----------------------------------------------------------------------------
+   Top-level Structure
+   ----------------------------------------------------------------------------- *)
+graph           = { line } ;
+line            = direction | node | edge | edge_chain | group | class_assignment | position
+                | style_block | comment | blank ;
+blank           = { whitespace } ;
+
+(* -----------------------------------------------------------------------------
+   Direction - Sets the layout direction for auto-layout
+   ----------------------------------------------------------------------------- *)
+direction       = ">" , ( "LR" | "TB" | "RL" | "BT" ) ;
+
+(* -----------------------------------------------------------------------------
+   Nodes - Define graph vertices with optional shape, label, and color
+   ----------------------------------------------------------------------------- *)
+node            = id , [ ":" , shape ] , [ label ] , [ color ] ;
+
+(* -----------------------------------------------------------------------------
+   Edges - Define connections between nodes
+
+   Simple edges can have labels; chains cannot.
+   ----------------------------------------------------------------------------- *)
+edge            = id , edge_op , id , [ label ] , [ color ] ;
+edge_chain      = id , edge_op , id , { edge_op , id } ;
+
+(* -----------------------------------------------------------------------------
+   Groups - Visual containers for related nodes
+
+   Groups may be nested to create hierarchy. Nodes may belong to multiple groups.
+   ----------------------------------------------------------------------------- *)
+group           = "@" , id , [ label ] , "{" , { group_member } , "}" ;
+group_member    = id | group ;
+class_assignment = "." , class_name , "{" , { id } , "}" ;
+
+(* -----------------------------------------------------------------------------
+   Layout Layer - Explicit positioning and sizing
+
+   Position is required for size. Coordinates are integers only.
+   ----------------------------------------------------------------------------- *)
+position        = id , "@" , integer , "," , integer , [ size_suffix ] ;
+size_suffix     = "^" , integer , "x" , integer ;
+
+(* -----------------------------------------------------------------------------
+   Style Layer - CSS-like styling for shapes and classes
+   ----------------------------------------------------------------------------- *)
+style_block     = "$" , selector , "{" , { property } , "}" ;
+selector        = ":" , shape | "." , class_name | "#" , id ;
+property        = prop_name , ":" , prop_value ;
+prop_name       = letter , { letter | digit | "-" } ;
+prop_value      = visible_char , { visible_char } | quoted_string ;
+class_name      = letter , { letter | digit | "_" | "-" } ;
+
+(* -----------------------------------------------------------------------------
+   Comments - Full-line comments only
+   ----------------------------------------------------------------------------- *)
+comment         = "//" , { any_char } ;
+
+(* -----------------------------------------------------------------------------
+   Tokens
+   ----------------------------------------------------------------------------- *)
+id              = letter , { letter | digit | "_" | "-" } ;
+shape           = "r" | "d" | "c" | "o" | "p" | "h" ;
+edge_op         = ">" | "~" | "=" | "--" | "<>" ;
+label           = word | quoted_string | multiline_string ;
+color           = "#" , hex_color ;
+
+(* -----------------------------------------------------------------------------
+   Strings
+   ----------------------------------------------------------------------------- *)
+word            = visible_char , { visible_char } ;
+quoted_string   = '"' , { char | escape_seq } , '"' ;
+multiline_string = '"""' , { any_char } , '"""' ;
+escape_seq      = "\" , ( "n" | "t" | '"' | "\" ) ;
+
+(* -----------------------------------------------------------------------------
+   Primitives
+   ----------------------------------------------------------------------------- *)
+integer         = digit , { digit } ;
+hex_color       = hex3 | hex6 ;
+hex3            = hex_digit , hex_digit , hex_digit ;
+hex6            = hex_digit , hex_digit , hex_digit , hex_digit , hex_digit , hex_digit ;
+letter          = "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j"
+                | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t"
+                | "u" | "v" | "w" | "x" | "y" | "z"
+                | "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J"
+                | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T"
+                | "U" | "V" | "W" | "X" | "Y" | "Z" ;
+digit           = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+hex_digit       = digit | "a" | "b" | "c" | "d" | "e" | "f"
+                | "A" | "B" | "C" | "D" | "E" | "F" ;
+whitespace      = " " | "\t" ;
+visible_char    = ? any non-whitespace character except reserved: > ~ = : @ ^ # { } " ? ;
+char            = ? any character except '"' and '\' ? ;
+any_char        = ? any character ? ;

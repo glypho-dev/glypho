@@ -1,0 +1,83 @@
+flowchart TD
+    raw("Raw Text")
+    tokenizer{{"Tokenizer"}}
+    tokens["Token IDs<br/>[7592, 318, 257,<br/> 3499, 1110]"]
+    embed["Embedding<br/>Lookup"]
+    pos_enc(["Positional<br/>Encoding"])
+    vectors["Token Vectors<br/>d=4096"]
+    attn{"Self-<br/>Attention"}
+    norm1["LayerNorm"]
+    ffn["Feed-Forward<br/>Network"]
+    norm2["LayerNorm"]
+    residual(("residual"))
+    repeat{{"×96 Layers<br/>(GPT-4 scale)"}}
+    final_norm["Final LayerNorm"]
+    unembed["Unembedding<br/>→ Logits"]
+    softmax(["Softmax"])
+    sample{"Sample<br/>Next Token"}
+    output("Generated Text")
+    raw --> tokenizer
+    tokenizer -->|"encode"| tokens
+    tokens --> embed
+    embed -->|"add"| pos_enc
+    pos_enc --> vectors
+    vectors --> attn
+    attn --> norm1
+    norm1 --> residual
+    vectors -->|"skip connection"| residual
+    residual --> ffn
+    ffn --> norm2
+    norm2 ==>|"stack"| repeat
+    repeat ==> final_norm
+    final_norm --> unembed
+    unembed -->|"probability distribution"| softmax
+    softmax -->|"top-p / temperature"| sample
+    sample -.->|"decode"| output
+    output -.->|"autoregressive"| tokens
+    subgraph input ["Input Processing"]
+        raw
+        tokenizer
+        tokens
+    end
+    subgraph embedding ["Embedding"]
+        embed
+        pos_enc
+        vectors
+    end
+    subgraph transformer ["Transformer Block"]
+        attn
+        norm1
+        ffn
+        norm2
+        residual
+    end
+    subgraph decoding ["Output Decoding"]
+        final_norm
+        unembed
+        softmax
+        sample
+        output
+    end
+    style raw fill:#f4a
+    style tokenizer fill:#f4a
+    style tokens fill:#fa5
+    style embed fill:#fc0
+    style pos_enc fill:#fd0
+    style vectors fill:#fe3
+    style attn fill:#6cf
+    style norm1 fill:#8df
+    style ffn fill:#48f
+    style norm2 fill:#8df
+    style residual fill:#aef
+    style repeat fill:#c8f
+    style final_norm fill:#f8a
+    style unembed fill:#f6a
+    style softmax fill:#f55
+    style sample fill:#f33
+    style output fill:#e22
+    classDef shape_h fill:#1a1a2e,stroke:#fff,stroke-width:2
+    class tokenizer,repeat shape_h
+    classDef shape_c fill:#1a1a2e,stroke:#aef,stroke-width:2
+    class residual shape_c
+    classDef shape_d stroke-width:2
+    class attn,sample shape_d

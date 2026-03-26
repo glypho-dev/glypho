@@ -1,0 +1,28 @@
+{
+  "name": "@glypho/parser",
+  "version": "0.1.0",
+  "description": "Lexer and recursive-descent parser for the .g graph notation format",
+  "license": "MIT",
+  "author": "glypho-dev",
+  "homepage": "https://glypho.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/glypho-dev/glypho.git",
+    "directory": "packages/parser"
+  },
+  "keywords": ["graph", "diagram", "parser", "notation", "glypho", "ast"],
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc",
+    "test": "vitest run",
+    "dev": "vitest"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}
