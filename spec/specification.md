@@ -95,7 +95,7 @@ A `.g` file consists of lines, where each line contains exactly one statement. B
 
 **Important constraints:**
 - One statement per line
-- Comments must be on their own line (no end-of-line comments)
+- Comments may appear on their own line or at the end of a statement (`// comment`)
 
 ### Direction
 
