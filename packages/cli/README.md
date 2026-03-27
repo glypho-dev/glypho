@@ -27,6 +27,8 @@ glypho render flow.mmd              # Mermaid input → SVG
 glypho render graph.dot -f png      # DOT input → PNG
 glypho render diagram.g --width 800 --height 600
 glypho render diagram.g -f png --scale 3
+glypho render diagram.g -f png -b transparent  # transparent PNG (default is white)
+glypho render diagram.g -b '#eee'              # SVG with background color
 ```
 
 ### Preview

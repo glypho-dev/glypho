@@ -14,11 +14,13 @@ export const renderCommand = new Command('render')
   .option('--width <n>', 'Set SVG width in pixels', parseInt)
   .option('--height <n>', 'Set SVG height in pixels', parseInt)
   .option('--scale <n>', 'Multiply PNG resolution, for example 2 for @2x output', parseFloat)
+  .option('-b, --background <color>', 'Background color (e.g. white, #fff, transparent). PNG defaults to white')
   .addHelpText('after', `
 Notes:
   Input files can be Glypho (.g), Mermaid (.mmd, .mermaid), or Graphviz DOT (.dot, .gv).
   --width and --height affect SVG output.
   --scale affects PNG output.
+  --background sets the background color. PNG defaults to white; SVG defaults to transparent.
   render never opens a browser; use glypho preview <file.svg> after writing an SVG.
 
 Examples:
@@ -27,6 +29,8 @@ Examples:
   glypho preview diagram.svg
   glypho render diagram.g --format png
   glypho render diagram.g --format png --output diagram@2x.png --scale 2
+  glypho render diagram.g --format png -b transparent
+  glypho render diagram.g -b '#eee' --output diagram.svg
   glypho render flow.mmd --output flow.svg
   glypho render graph.dot --format svg --width 1200 --height 800
 `)
@@ -36,6 +40,7 @@ Examples:
     width?: number;
     height?: number;
     scale?: number;
+    background?: string;
   }) => {
     const { file: inputFile, name, graph, errors } = loadGraph(file);
 
@@ -45,14 +50,15 @@ Examples:
       return;
     }
 
-    const svg = renderSvg(graph, { width: opts.width, height: opts.height });
-
     if (opts.format === 'png') {
-      const png = renderPng(svg, { scale: opts.scale });
+      const bg = opts.background ?? 'white';
+      const svg = renderSvg(graph, { width: opts.width, height: opts.height });
+      const png = renderPng(svg, { scale: opts.scale, background: bg });
       const outPath = opts.output ?? deriveOutputPath(inputFile, '.png');
       writeFileSync(outPath, png);
       console.log(`→ ${outPath}`);
     } else {
+      const svg = renderSvg(graph, { width: opts.width, height: opts.height, background: opts.background });
       const outPath = opts.output ?? deriveOutputPath(inputFile, '.svg');
       writeFileSync(outPath, svg);
       console.log(`→ ${outPath}`);

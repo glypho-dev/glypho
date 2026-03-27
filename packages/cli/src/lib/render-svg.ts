@@ -5,8 +5,18 @@ export interface RenderSvgOptions {
   width?: number;
   height?: number;
   padding?: number;
+  background?: string;
+}
+
+function escapeAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 export function renderSvg(graph: Graph, options: RenderSvgOptions = {}): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>\n${pureRenderSvg(graph, options)}`;
+  let svg = pureRenderSvg(graph, options);
+  if (options.background) {
+    const bgRect = `<rect width="100%" height="100%" fill="${escapeAttr(options.background)}"/>`;
+    svg = svg.replace(/<svg([^>]*)>/, `<svg$1>${bgRect}`);
+  }
+  return `<?xml version="1.0" encoding="UTF-8"?>\n${svg}`;
 }

@@ -278,6 +278,31 @@ describe('render', () => {
     expect(status).toBe(1);
     expect(stderr).toContain('<stdin>:1:2:');
   });
+
+  it('SVG output has no background rect by default', () => {
+    const outPath = '/tmp/glypho-test-no-bg.svg';
+    cleanup.push(outPath);
+    run(`render ${join(EXAMPLES, 'minimal.g')} -o ${outPath}`);
+    const content = readFileSync(outPath, 'utf-8');
+    expect(content).not.toContain('width="100%" height="100%"');
+  });
+
+  it('SVG output includes background rect when --background is set', () => {
+    const outPath = '/tmp/glypho-test-bg.svg';
+    cleanup.push(outPath);
+    run(`render ${join(EXAMPLES, 'minimal.g')} -b '#eee' -o ${outPath}`);
+    const content = readFileSync(outPath, 'utf-8');
+    expect(content).toContain('<rect width="100%" height="100%" fill="#eee"/>');
+  });
+
+  it('PNG with --background transparent produces a valid PNG', () => {
+    const outPath = '/tmp/glypho-test-bg-transparent.png';
+    cleanup.push(outPath);
+    run(`render ${join(EXAMPLES, 'minimal.g')} -f png -b transparent -o ${outPath}`);
+    const buf = readFileSync(outPath);
+    expect(buf[0]).toBe(0x89);
+    expect(buf[1]).toBe(0x50);
+  });
 });
 
 // ---------------------------------------------------------------------------
