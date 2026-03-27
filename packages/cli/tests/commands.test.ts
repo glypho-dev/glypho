@@ -284,7 +284,7 @@ describe('render', () => {
     cleanup.push(outPath);
     run(`render ${join(EXAMPLES, 'minimal.g')} -o ${outPath}`);
     const content = readFileSync(outPath, 'utf-8');
-    expect(content).not.toContain('width="100%" height="100%"');
+    expect(content).not.toMatch(/fill="#eee"/);
   });
 
   it('SVG output includes background rect when --background is set', () => {
@@ -292,7 +292,7 @@ describe('render', () => {
     cleanup.push(outPath);
     run(`render ${join(EXAMPLES, 'minimal.g')} -b '#eee' -o ${outPath}`);
     const content = readFileSync(outPath, 'utf-8');
-    expect(content).toContain('<rect width="100%" height="100%" fill="#eee"/>');
+    expect(content).toMatch(/<rect x="[^"]*" y="[^"]*" width="[^"]*" height="[^"]*" fill="#eee"\/>/);
   });
 
   it('PNG with --background transparent produces a valid PNG', () => {
