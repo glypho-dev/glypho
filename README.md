@@ -1,5 +1,5 @@
+<h1 align="center">Glypho</h1>
 <p align="center">
-  <strong>Glypho</strong><br>
   The shortest way to write flowcharts as text.
 </p>
 
