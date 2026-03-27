@@ -2,6 +2,7 @@ import type { EdgeOp } from '@glypho/parser';
 import type { LayoutEdge } from '../layout/types.js';
 import { pointsToPath, pathMidpoint } from './paths.js';
 import { resolveEdgeColor } from '../styles/resolve.js';
+import { markerEndRef, markerStartRef } from './markers.js';
 
 interface EdgePathProps {
   layoutEdge: LayoutEdge;
@@ -11,16 +12,14 @@ interface EdgePathProps {
 interface EdgeVisual {
   strokeDasharray?: string;
   strokeWidth: number;
-  markerEnd?: string;
-  markerStart?: string;
 }
 
 const EDGE_VISUALS: Record<EdgeOp, EdgeVisual> = {
-  '>': { strokeWidth: 2, markerEnd: 'url(#arrowhead)' },
-  '~': { strokeWidth: 2, strokeDasharray: '6 4', markerEnd: 'url(#arrowhead)' },
-  '=': { strokeWidth: 4, markerEnd: 'url(#arrowhead-thick)' },
+  '>': { strokeWidth: 2 },
+  '~': { strokeWidth: 2, strokeDasharray: '6 4' },
+  '=': { strokeWidth: 4 },
   '--': { strokeWidth: 2 },
-  '<>': { strokeWidth: 2, markerEnd: 'url(#arrowhead)', markerStart: 'url(#arrowhead-reverse)' },
+  '<>': { strokeWidth: 2 },
 };
 
 export function EdgePath({ layoutEdge, onClick }: EdgePathProps) {
@@ -36,8 +35,8 @@ export function EdgePath({ layoutEdge, onClick }: EdgePathProps) {
       stroke={color}
       strokeWidth={visual.strokeWidth}
       strokeDasharray={visual.strokeDasharray}
-      markerEnd={visual.markerEnd}
-      markerStart={visual.markerStart}
+      markerEnd={markerEndRef(edge.op, color)}
+      markerStart={markerStartRef(edge.op, color)}
       onClick={onClick ? () => onClick(edge.from, edge.to) : undefined}
       style={onClick ? { cursor: 'pointer' } : undefined}
     />

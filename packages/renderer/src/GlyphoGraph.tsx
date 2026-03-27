@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import type { Graph } from '@glypho/parser';
 import { computeLayout } from './layout/layout.js';
 import { MarkerDefs } from './edges/markers.js';
+import { resolveEdgeColor } from './styles/resolve.js';
 import { GroupRenderer } from './groups/GroupRenderer.js';
 import { EdgePath, EdgeLabel } from './edges/EdgeRenderer.js';
 import { NodeRenderer } from './nodes/NodeRenderer.js';
@@ -59,7 +60,7 @@ export function GlyphoGraph({
       style={{ maxWidth: '100%', ...style }}
       xmlns="http://www.w3.org/2000/svg"
     >
-      <MarkerDefs />
+      <MarkerDefs colors={layout.edges.map(e => resolveEdgeColor(e.edge.color))} />
       {/* Layer 1: Groups (background) */}
       {layout.groups.map(g => (
         <GroupRenderer key={g.group.id} layoutGroup={g} />

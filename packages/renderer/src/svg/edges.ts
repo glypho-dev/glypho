@@ -3,20 +3,19 @@ import type { LayoutEdge } from '../layout/types.js';
 import { pointsToPath, pathMidpoint } from '../edges/paths.js';
 import { resolveEdgeColor } from '../styles/resolve.js';
 import { escapeXml } from './escape.js';
+import { markerEndId, markerStartId } from './markers.js';
 
 interface EdgeVisual {
   strokeDasharray?: string;
   strokeWidth: number;
-  markerEnd?: string;
-  markerStart?: string;
 }
 
 const EDGE_VISUALS: Record<EdgeOp, EdgeVisual> = {
-  '>': { strokeWidth: 2, markerEnd: 'url(#arrowhead)' },
-  '~': { strokeWidth: 2, strokeDasharray: '6 4', markerEnd: 'url(#arrowhead)' },
-  '=': { strokeWidth: 4, markerEnd: 'url(#arrowhead-thick)' },
+  '>': { strokeWidth: 2 },
+  '~': { strokeWidth: 2, strokeDasharray: '6 4' },
+  '=': { strokeWidth: 4 },
   '--': { strokeWidth: 2 },
-  '<>': { strokeWidth: 2, markerEnd: 'url(#arrowhead)', markerStart: 'url(#arrowhead-reverse)' },
+  '<>': { strokeWidth: 2 },
 };
 
 export function renderEdgePath(layoutEdge: LayoutEdge): string {
@@ -27,8 +26,11 @@ export function renderEdgePath(layoutEdge: LayoutEdge): string {
 
   let attrs = `d="${d}" fill="none" stroke="${escapeXml(color)}" stroke-width="${visual.strokeWidth}"`;
   if (visual.strokeDasharray) attrs += ` stroke-dasharray="${visual.strokeDasharray}"`;
-  if (visual.markerEnd) attrs += ` marker-end="${visual.markerEnd}"`;
-  if (visual.markerStart) attrs += ` marker-start="${visual.markerStart}"`;
+
+  const end = markerEndId(edge.op, color);
+  const start = markerStartId(edge.op, color);
+  if (end) attrs += ` marker-end="url(#${end})"`;
+  if (start) attrs += ` marker-start="url(#${start})"`;
 
   return `<path ${attrs}/>`;
 }

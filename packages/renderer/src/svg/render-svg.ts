@@ -1,7 +1,8 @@
 import type { Graph, ParseError } from '@glypho/parser';
 import { parse } from '@glypho/parser';
 import { computeLayout } from '../layout/layout.js';
-import { MARKER_DEFS } from './markers.js';
+import { buildMarkerDefs } from './markers.js';
+import { resolveEdgeColor } from '../styles/resolve.js';
 import { renderGroup } from './groups.js';
 import { renderEdgePath, renderEdgeLabel } from './edges.js';
 import { renderNode } from './nodes.js';
@@ -39,9 +40,10 @@ export function renderSvg(graph: Graph, options: RenderSvgOptions = {}): string 
   const widthAttr = width != null ? ` width="${width}"` : '';
   const heightAttr = height != null ? ` height="${height}"` : '';
 
+  const edgeColors = layout.edges.map(e => resolveEdgeColor(e.edge.color));
   const parts: string[] = [];
   parts.push(`<svg viewBox="${viewBox}"${widthAttr}${heightAttr} style="max-width:100%" xmlns="http://www.w3.org/2000/svg">`);
-  parts.push(MARKER_DEFS);
+  parts.push(buildMarkerDefs(edgeColors));
 
   for (const g of layout.groups) {
     parts.push(renderGroup(g));
