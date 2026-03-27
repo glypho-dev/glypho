@@ -57,70 +57,7 @@ Produces:
 
 Every node is `id:shape Label`. Every connection is `source>target`. That's the whole idea.
 
----
-
-Here's another — a simple process with a decision loop:
-
-```
->LR
-
-start:c Start
-process:r "Do Thing"
-check:d OK?
-done:p Done
-
-start>process
-process>check
-check>done yes
-check>process no
-```
-
-<p align="center">
-  <img src=".github/images/simple-flow.svg" alt="Simple flow with decision" width="500">
-</p>
-
-And a project flow with groups:
-
-```
->LR
-
-idea:c Idea
-plan:r Plan
-build:r Build
-test:d Ready?
-ship:p Ship
-
-@work{plan build test}
-
-idea>plan
-plan>build
-build>test
-test>ship yes
-test>plan no
-```
-
-<p align="center">
-  <img src=".github/images/idea-to-ship.svg" alt="Idea to ship flowchart" width="600">
-</p>
-
----
-
-## Why .g?
-
-The `.g` format was designed to use as few tokens as possible. Early comparisons against other formats representing the same graphs show significant savings:
-
-| Format | Relative Tokens |
-|---|---|
-| Excalidraw JSON | ~500% |
-| JSON Canvas | 100% (baseline) |
-| PlantUML | ~70% |
-| Mermaid | ~50% |
-| Graphviz DOT | ~45% |
-| **Glypho (.g)** | **~20%** |
-
-> These are rough estimates from early-stage comparisons, not formal benchmarks. The exact ratio depends on the diagram. The point is directional: `.g` is meaningfully more compact than alternatives.
-
-Here's the same diagram in Mermaid vs `.g`:
+Here's what that looks like compared to Mermaid:
 
 <table>
 <tr>
@@ -167,6 +104,23 @@ Same diagram. Fewer characters, fewer tokens, no brackets, no keywords.
 
 ---
 
+## Why .g?
+
+The `.g` format was designed to use as few tokens as possible. Early comparisons against other formats representing the same graphs show significant savings:
+
+| Format | Relative Tokens |
+|---|---|
+| Excalidraw JSON | ~500% |
+| JSON Canvas | 100% (baseline) |
+| PlantUML | ~70% |
+| Mermaid | ~50% |
+| Graphviz DOT | ~45% |
+| **Glypho (.g)** | **~20%** |
+
+> These are rough estimates from early-stage comparisons, not formal benchmarks. The exact ratio depends on the diagram. The point is directional: `.g` is meaningfully more compact than alternatives.
+
+---
+
 ## Features
 
 <p align="center">
@@ -186,6 +140,8 @@ Same diagram. Fewer characters, fewer tokens, no brackets, no keywords.
 | **Styles** | `$:r{fill:#fff}` | CSS-like, per-shape/class/node |
 | **Converters** | Mermaid, DOT, JSON Canvas | import and export |
 
+See the [full specification](spec/specification.md) for details on every feature.
+
 ---
 
 ## Relation to Mermaid
@@ -195,6 +151,12 @@ Glypho focuses on the **flowchart** subset of what Mermaid offers — nodes, edg
 - Mermaid flowchart import/export covers: direction, nodes/shapes, edges/labels/chains, subgraphs, `style`, `classDef`, and `class`
 - Unsupported Mermaid constructs are surfaced as parse errors, not silently dropped
 - Other Mermaid diagram families (sequence, ER, gantt, C4, state) are out of scope
+
+---
+
+## Try It Online
+
+The [Glypho Editor](https://glypho.dev/editor/) lets you write `.g` notation and see the rendered graph in real time — no install needed. It's the fastest way to experiment with the format, share diagrams, or just see what Glypho can do.
 
 ---
 
@@ -295,12 +257,6 @@ npm test
 ```
 
 Build order matters (parser → renderer → cli). `npm run build` handles this automatically.
-
----
-
-## Editor
-
-The editor/playground lives in a separate repo and is available deployed at [editor.glypho.dev](https://editor.glypho.dev).
 
 ---
 
