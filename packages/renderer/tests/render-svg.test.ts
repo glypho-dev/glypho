@@ -170,27 +170,61 @@ describe('renderSvg', () => {
     expect(svg).toContain('#abc123');
   });
 
-  it('escapes hostile style values in attributes', () => {
+  it('falls back to safe color for hostile style values', () => {
     const svg = renderSvg(emptyGraph({
       nodes: [{ id: 'a', shape: 'r' }],
       styles: [{ selector: ':r', properties: { fill: '"><script>alert(1)</script>' } }],
     }));
     expect(svg).not.toContain('<script>');
-    expect(svg).toContain('&lt;script&gt;');
+    // Invalid hex is replaced with fallback, not escaped and passed through
+    expect(svg).toContain('fill="#888888"');
   });
 
-  it('escapes hostile edge color values', () => {
+  it('neutralizes hostile edge color in stroke, marker defs, and marker refs', () => {
     const svg = renderSvg(emptyGraph({
       nodes: [{ id: 'a' }, { id: 'b' }],
       edges: [{ from: 'a', to: 'b', op: '>', color: '"><svg onload=alert(1)>' }],
     }));
-    // The quotes and angle brackets must be escaped so the attribute
-    // boundary can't be broken — the hostile string stays inside the
-    // stroke="..." value as inert text.
-    expect(svg).toContain('&quot;');
-    expect(svg).toContain('&gt;');
-    // Must not contain an unescaped attribute-breaking sequence
-    expect(svg).not.toContain('stroke=""');
+    // Hostile string must not appear anywhere in the output
+    expect(svg).not.toContain('onload');
+    expect(svg).not.toContain('alert');
+    // Invalid color falls back safely
+    expect(svg).toContain('stroke="#888888"');
+    // Marker defs use index-based IDs, not color-derived
+    expect(svg).toMatch(/marker id="arrowhead-\d+"/);
+    // Marker refs use the same index-based IDs
+    expect(svg).toMatch(/marker-end="url\(#arrowhead-\d+\)"/);
+  });
+
+  it('neutralizes hostile color via DOT import path', () => {
+    // Simulates the attack vector: DOT import preserves arbitrary color strings
+    const svg = renderSvg(emptyGraph({
+      nodes: [{ id: 'a' }, { id: 'b' }],
+      edges: [{ from: 'a', to: 'b', op: '>', color: '#"><svg onload=alert(1)>' }],
+    }));
+    expect(svg).not.toContain('onload');
+    expect(svg).not.toContain('alert');
+    // No attacker-controlled content in marker IDs
+    expect(svg).not.toMatch(/id="arrowhead[^"]*onload/);
+    expect(svg).not.toMatch(/id="arrowhead[^"]*<svg/);
+  });
+
+  it('handles valid non-default edge colors with indexed markers', () => {
+    const svg = renderSvg(emptyGraph({
+      nodes: [{ id: 'a' }, { id: 'b' }, { id: 'c' }],
+      edges: [
+        { from: 'a', to: 'b', op: '>', color: '#ff0000' },
+        { from: 'b', to: 'c', op: '>', color: '#00ff00' },
+      ],
+    }));
+    // Each valid color gets its own indexed marker
+    expect(svg).toContain('fill="#ff0000"');
+    expect(svg).toContain('fill="#00ff00"');
+    // Markers are index-based
+    expect(svg).toContain('id="arrowhead-1"');
+    expect(svg).toContain('id="arrowhead-2"');
+    expect(svg).toContain('marker-end="url(#arrowhead-1)"');
+    expect(svg).toContain('marker-end="url(#arrowhead-2)"');
   });
 });
 

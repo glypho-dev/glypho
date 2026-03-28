@@ -1,13 +1,24 @@
 import type { Node, Style, Shape } from '@glypho/parser';
 import { SHAPE_DEFAULTS, type NodeStyle } from './defaults.js';
 
-/** Parse a 3 or 6 digit hex color to full 6-digit form */
-function normalizeHex(hex: string): string {
-  const h = hex.startsWith('#') ? hex.slice(1) : hex;
-  if (h.length === 3) {
+const HEX3 = /^#?([0-9a-fA-F]{3})$/;
+const HEX6 = /^#?([0-9a-fA-F]{6})$/;
+
+/** Validate that a string is a 3 or 6 digit hex color */
+export function isValidHex(value: string): boolean {
+  return HEX3.test(value) || HEX6.test(value);
+}
+
+/** Parse a 3 or 6 digit hex color to full 6-digit form. Returns fallback for invalid input. */
+function normalizeHex(hex: string, fallback = '#888888'): string {
+  const m6 = hex.match(HEX6);
+  if (m6) return '#' + m6[1];
+  const m3 = hex.match(HEX3);
+  if (m3) {
+    const h = m3[1];
     return '#' + h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
   }
-  return '#' + h;
+  return fallback;
 }
 
 /** Derive a light tinted fill from a stroke color */

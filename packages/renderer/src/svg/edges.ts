@@ -18,7 +18,7 @@ const EDGE_VISUALS: Record<EdgeOp, EdgeVisual> = {
   '<>': { strokeWidth: 2 },
 };
 
-export function renderEdgePath(layoutEdge: LayoutEdge): string {
+export function renderEdgePath(layoutEdge: LayoutEdge, suffixMap: Map<string, string>): string {
   const { edge } = layoutEdge;
   let points = layoutEdge.points;
   const color = resolveEdgeColor(edge.color);
@@ -31,12 +31,13 @@ export function renderEdgePath(layoutEdge: LayoutEdge): string {
   if (startLen) points = shortenStart(points, startLen);
 
   const d = pointsToPath(points);
+  const suffix = suffixMap.get(color) ?? '';
 
   let attrs = `d="${d}" fill="none" stroke="${escapeXml(color)}" stroke-width="${visual.strokeWidth}"`;
   if (visual.strokeDasharray) attrs += ` stroke-dasharray="${visual.strokeDasharray}"`;
 
-  const end = markerEndId(edge.op, color);
-  const start = markerStartId(edge.op, color);
+  const end = markerEndId(edge.op, suffix);
+  const start = markerStartId(edge.op, suffix);
   if (end) attrs += ` marker-end="url(#${end})"`;
   if (start) attrs += ` marker-start="url(#${start})"`;
 

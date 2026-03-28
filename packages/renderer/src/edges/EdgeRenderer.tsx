@@ -6,6 +6,7 @@ import { markerEndRef, markerStartRef } from './markers.js';
 
 interface EdgePathProps {
   layoutEdge: LayoutEdge;
+  suffixMap: Map<string, string>;
   onClick?: (from: string, to: string) => void;
 }
 
@@ -22,7 +23,7 @@ const EDGE_VISUALS: Record<EdgeOp, EdgeVisual> = {
   '<>': { strokeWidth: 2 },
 };
 
-export function EdgePath({ layoutEdge, onClick }: EdgePathProps) {
+export function EdgePath({ layoutEdge, suffixMap, onClick }: EdgePathProps) {
   const { edge } = layoutEdge;
   let points = layoutEdge.points;
   const color = resolveEdgeColor(edge.color);
@@ -35,6 +36,7 @@ export function EdgePath({ layoutEdge, onClick }: EdgePathProps) {
   if (startLen) points = shortenStart(points, startLen);
 
   const d = pointsToPath(points);
+  const suffix = suffixMap.get(color) ?? '';
 
   return (
     <path
@@ -43,8 +45,8 @@ export function EdgePath({ layoutEdge, onClick }: EdgePathProps) {
       stroke={color}
       strokeWidth={visual.strokeWidth}
       strokeDasharray={visual.strokeDasharray}
-      markerEnd={markerEndRef(edge.op, color)}
-      markerStart={markerStartRef(edge.op, color)}
+      markerEnd={markerEndRef(edge.op, suffix)}
+      markerStart={markerStartRef(edge.op, suffix)}
       onClick={onClick ? () => onClick(edge.from, edge.to) : undefined}
       style={onClick ? { cursor: 'pointer' } : undefined}
     />

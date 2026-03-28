@@ -24,15 +24,16 @@ export function renderSvg(graph: Graph, options: RenderSvgOptions = {}): string 
   const heightAttr = height != null ? ` height="${height}"` : '';
 
   const edgeColors = layout.edges.map(e => resolveEdgeColor(e.edge.color));
+  const { defs, suffixMap } = buildMarkerDefs(edgeColors);
   const parts: string[] = [];
   parts.push(`<svg viewBox="${viewBox}"${widthAttr}${heightAttr} style="max-width:100%" xmlns="http://www.w3.org/2000/svg">`);
-  parts.push(buildMarkerDefs(edgeColors));
+  parts.push(defs);
 
   for (const g of layout.groups) {
     parts.push(renderGroup(g));
   }
   for (const e of layout.edges) {
-    parts.push(renderEdgePath(e));
+    parts.push(renderEdgePath(e, suffixMap));
   }
   for (const n of layout.nodes) {
     parts.push(renderNode(n, graph.styles));

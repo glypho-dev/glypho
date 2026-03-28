@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import type { Graph } from '@glypho/parser';
 import { computeLayout } from './layout/layout.js';
 import { computeViewBox } from './layout/viewbox.js';
-import { MarkerDefs } from './edges/markers.js';
+import { MarkerDefs, buildSuffixMap } from './edges/markers.js';
 import { resolveEdgeColor } from './styles/resolve.js';
 import { GroupRenderer } from './groups/GroupRenderer.js';
 import { EdgePath, EdgeLabel } from './edges/EdgeRenderer.js';
@@ -30,6 +30,8 @@ export function GlyphoGraph({
   onEdgeClick,
 }: GlyphoGraphProps) {
   const layout = useMemo(() => computeLayout(graph), [graph]);
+  const edgeColors = useMemo(() => layout.edges.map(e => resolveEdgeColor(e.edge.color)), [layout]);
+  const suffixMap = useMemo(() => buildSuffixMap(edgeColors), [edgeColors]);
 
   const viewBox = computeViewBox(layout, padding);
 
@@ -42,7 +44,7 @@ export function GlyphoGraph({
       style={{ maxWidth: '100%', ...style }}
       xmlns="http://www.w3.org/2000/svg"
     >
-      <MarkerDefs colors={layout.edges.map(e => resolveEdgeColor(e.edge.color))} />
+      <MarkerDefs colors={edgeColors} />
       {/* Layer 1: Groups (background) */}
       {layout.groups.map(g => (
         <GroupRenderer key={g.group.id} layoutGroup={g} />
@@ -52,6 +54,7 @@ export function GlyphoGraph({
         <EdgePath
           key={`path-${e.edge.from}-${e.edge.to}-${i}`}
           layoutEdge={e}
+          suffixMap={suffixMap}
           onClick={onEdgeClick}
         />
       ))}

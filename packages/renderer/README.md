@@ -57,20 +57,22 @@ const svg = renderSvg(graph, { width: 800, padding: 50 })
 
 ### Embedding
 
+```html
+<!-- Safest: static file or <img> tag (no script execution) -->
+<img src="/diagram.svg" alt="My diagram">
+```
+
 ```js
-// Plain DOM
+// Plain DOM — only use with trusted or self-generated .g input
 container.innerHTML = svg
 ```
 
 ```tsx
-// React
+// React — only use with trusted or self-generated .g input
 <div dangerouslySetInnerHTML={{ __html: svg }} />
 ```
 
-```html
-<!-- Static file -->
-<img src="/diagram.svg" alt="My diagram">
-```
+> **Note:** The SVG string renderer escapes user-derived values (labels, colors, IDs), but `innerHTML` and `dangerouslySetInnerHTML` interpret the full SVG as markup. For untrusted input, prefer `<img src="...">` or the `<GlyphoGraph>` React component, which renders through React's DOM and does not parse raw HTML.
 
 ## React Component
 
