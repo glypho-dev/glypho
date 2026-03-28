@@ -1,0 +1,132 @@
+<!--
+  Visual test page for the <GlyphoGraph> React component.
+
+  The Glypho Editor (glypho.dev/editor) uses this same React component
+  to render diagrams. This page lets you visually verify rendering
+  changes (arrowheads, edges, shapes, groups, styles) without needing
+  the full editor app.
+
+  Usage:
+    npm run build          (from repo root)
+    npx serve . -p 3333   (from repo root)
+    open http://localhost:3333/packages/renderer/test-visual.html
+
+  Not published to npm — only dist/ is included in the package.
+-->
+<!DOCTYPE html>
+<html>
+<head>
+  <title>GlyphoGraph Visual Test</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; background: #f5f5f5; }
+    h1 { font-size: 1.2rem; color: #333; }
+    h2 { font-size: 1rem; color: #666; margin-top: 2rem; }
+    .diagram { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin: 1rem 0; display: inline-block; }
+  </style>
+</head>
+<body>
+  <h1>GlyphoGraph React Component - Visual Test</h1>
+  <p style="color:#888; font-size:0.85rem;">Run from repo root: <code>npx serve . -p 3333</code> then open <code>http://localhost:3333/packages/renderer/test-visual.html</code></p>
+  <div id="root"></div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "react": "https://esm.sh/react@19",
+      "react-dom": "https://esm.sh/react-dom@19",
+      "react-dom/client": "https://esm.sh/react-dom@19/client",
+      "react/jsx-runtime": "https://esm.sh/react@19/jsx-runtime",
+      "@glypho/parser": "../parser/dist/index.js",
+      "@glypho/renderer": "./dist/index.js",
+      "@dagrejs/dagre": "https://esm.sh/@dagrejs/dagre@1"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import React from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { parse } from '@glypho/parser';
+    import { GlyphoGraph } from '@glypho/renderer';
+
+    const examples = [
+      {
+        title: 'All Features (features.g)',
+        source: `>TB
+glypho:h "Glypho (.g)" #ef6c00
+shapes:r "6 Shapes\\nrect, diamond, circle\\noval, pill, hexagon"
+edges:r "5 Edge Types\\nflow, dashed, thick\\nundirected, bidirectional"
+groups:r "Groups\\nnested containers\\nwith labels"
+convert:r "Converters\\nMermaid, DOT\\nJSON Canvas"
+@features{shapes edges groups convert}
+glypho>shapes
+glypho>edges
+glypho>groups
+glypho>convert`
+      },
+      {
+        title: 'Edge Types',
+        source: `>LR
+a:r Flow
+b:r Dashed
+c:r Thick
+d:r Undirected
+e:r Bidir
+a>b
+b~c
+c=d
+d--e
+e<>a`
+      },
+      {
+        title: 'Morning Routine',
+        source: `>LR
+wake:c "Wake Up"
+coffee:r "Make Coffee"
+ready:d "Running Late?"
+rush:r "Skip Breakfast"
+eat:r "Eat Breakfast"
+go:p "Head Out"
+wake>coffee
+coffee>ready
+ready>rush yes
+ready>eat no
+rush>go
+eat>go`
+      },
+      {
+        title: 'Colored Edges',
+        source: `>LR
+a:r Start #4CAF50
+b:r Middle #2196F3
+c:r End #F44336
+a>b #4CAF50
+b>c #2196F3
+c~a #F44336`
+      }
+    ];
+
+    function App() {
+      return React.createElement('div', null,
+        examples.map((ex, i) => {
+          const { graph, errors } = parse(ex.source);
+          return React.createElement('div', { key: i },
+            React.createElement('h2', null, ex.title),
+            errors.length > 0 && React.createElement('pre', { style: { color: 'red' } }, JSON.stringify(errors, null, 2)),
+            React.createElement('div', { className: 'diagram' },
+              React.createElement(GlyphoGraph, {
+                graph,
+                width: 800,
+                height: 500,
+                onNodeClick: (id) => console.log('clicked', id)
+              })
+            )
+          );
+        })
+      );
+    }
+
+    createRoot(document.getElementById('root')).render(React.createElement(App));
+  </script>
+</body>
+</html>
