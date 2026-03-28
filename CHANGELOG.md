@@ -4,6 +4,25 @@ All notable changes to the Glypho packages will be documented in this file.
 
 All packages (`@glypho/parser`, `@glypho/renderer`, `@glypho/cli`) are versioned in lockstep.
 
+## 0.1.1 — Bug Fixes & Rendering Improvements
+
+### @glypho/renderer
+
+- Fix arrowhead color now matches edge color
+- Fix edge stroke no longer bleeds past arrowhead tip
+- Fix edge paths and labels included in viewBox bounds calculation
+
+### @glypho/cli
+
+- Add `--background` / `-b` flag to `render` command (SVG default: transparent, PNG default: white)
+- Fix SVG background rect uses viewBox coordinates correctly
+
+### Spec
+
+- Fix comment constraint to match end-of-line comment support
+
+---
+
 ## 0.1.0 — Initial Release
 
 First public release of the `.g` format toolchain.

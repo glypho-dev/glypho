@@ -1,6 +1,6 @@
 {
   "name": "@glypho/cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "CLI tool for validating, converting, and rendering .g graph notation files",
   "license": "MIT",
   "author": "glypho-dev",
@@ -28,8 +28,8 @@
     "dev": "vitest"
   },
   "dependencies": {
-    "@glypho/parser": "0.1.0",
-    "@glypho/renderer": "0.1.0",
+    "@glypho/parser": "0.1.1",
+    "@glypho/renderer": "0.1.1",
     "@resvg/resvg-js": "^2.6.0",
     "commander": "^13.0.0",
     "gpt-tokenizer": "^2.8.0"
