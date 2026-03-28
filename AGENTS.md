@@ -25,7 +25,7 @@ packages/renderer/     @glypho/renderer — layout engine + SVG renderer
   src/nodes/           React node/shape components (6 shapes)
   src/edges/           React edge components, path calculation, markers
   src/groups/          React group component
-  src/layout/          dagre integration, node sizing, layout types (pure, no React)
+  src/layout/          dagre integration, node sizing, viewbox computation, layout types (pure, no React)
   src/styles/          Default styles, cascade resolution (pure, no React)
   tests/               Vitest suite
 

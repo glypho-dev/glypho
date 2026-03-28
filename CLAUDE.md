@@ -43,14 +43,16 @@ Monorepo uses npm workspaces.
   - `@glypho/renderer/svg` — pure SVG string renderer (no React/DOM dependency)
 - `render(source, options?): { svg, errors }` — `.g` text in → SVG string out (no React)
 - `renderSvg(graph, options?): string` — Graph AST → SVG string (no React)
+- `RenderSvgOptions`: `{ width?, height?, padding? }`
 - `<GlyphoGraph graph={graph} />` — React component (SVG output, click handlers)
 - `computeLayout(graph): LayoutResult` — dagre-based auto-layout
+- Utilities: `measureNode`, `measureText`, `resolveNodeStyle`, `resolveEdgeColor`
 
 **CLI** (`@glypho/cli` → `glypho` command):
 - `glypho check [file]` — validate `.g` files (`--json` for machine output)
 - `glypho parse [file]` — print JSON AST (`--compact` for minified)
 - `glypho info [file]` — stats + multi-format token comparison (`--json`)
-- `glypho render [file]` — render Glypho, Mermaid, or DOT to SVG/PNG (`-f png`, `-o path`, `--width`, `--height`, `--scale`)
+- `glypho render [file]` — render Glypho, Mermaid, or DOT to SVG/PNG (`-f png`, `-o path`, `--width`, `--height`, `--scale`, `-b/--background <color>`)
 - `glypho preview <file.svg>` — open an existing SVG in the default browser (`--force` to override CI/non-interactive guard)
 - `glypho to mermaid [file]` — convert `.g` to Mermaid text
 - `glypho from mermaid|dot [file]` — convert Mermaid or DOT to `.g`
