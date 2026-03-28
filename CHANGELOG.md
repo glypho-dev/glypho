@@ -4,6 +4,18 @@ All notable changes to the Glypho packages will be documented in this file.
 
 All packages (`@glypho/parser`, `@glypho/renderer`, `@glypho/cli`) are versioned in lockstep.
 
+## 0.1.2 — Security Fix & React Component Parity
+
+### @glypho/renderer
+
+- **Security**: Fix SVG markup injection via marker IDs derived from user-provided color values. Marker IDs are now index-based, and color validation rejects non-hex input with a safe fallback. Affects the SVG string renderer only; the React component was not exploitable.
+- Fix arrowhead stroke bleed fix now applied to React component path (was only in SVG string renderer)
+- Share edge path shortening logic between SVG string renderer and React component
+- Add visual test page (`test-visual.html`) for verifying React component rendering
+- Update README embedding examples with safety guidance for `innerHTML` usage
+
+---
+
 ## 0.1.1 — Bug Fixes & Rendering Improvements
 
 ### @glypho/renderer
