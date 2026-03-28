@@ -160,6 +160,17 @@ The [Glypho Editor](https://glypho.dev/editor/) lets you write `.g` notation and
 
 ---
 
+## For AI Agents
+
+To generate `.g` diagrams, read these in order:
+1. [Examples](spec/examples/) — learn the patterns
+2. [Specification](spec/specification.md) — full syntax reference
+3. [EBNF Grammar](spec/grammar.ebnf) — formal grammar
+
+The [Features](#features) table above is a quick cheat sheet.
+
+---
+
 ## Install
 
 ```bash
@@ -169,7 +180,8 @@ npm install @glypho/parser @glypho/renderer
 For the CLI:
 
 ```bash
-npm install -g @glypho/cli
+npm install -g @glypho/cli    # install
+npm update -g @glypho/cli     # update to latest
 ```
 
 ---
