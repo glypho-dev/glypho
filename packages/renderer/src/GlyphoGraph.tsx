@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { Graph } from '@glypho/parser';
 import { computeLayout } from './layout/layout.js';
+import { computeViewBox } from './layout/viewbox.js';
 import { MarkerDefs } from './edges/markers.js';
 import { resolveEdgeColor } from './styles/resolve.js';
 import { GroupRenderer } from './groups/GroupRenderer.js';
@@ -30,26 +31,7 @@ export function GlyphoGraph({
 }: GlyphoGraphProps) {
   const layout = useMemo(() => computeLayout(graph), [graph]);
 
-  // Compute viewBox from layout bounds
-  const allX = [
-    ...layout.nodes.map(n => n.x),
-    ...layout.nodes.map(n => n.x + n.width),
-    ...layout.groups.map(g => g.x),
-    ...layout.groups.map(g => g.x + g.width),
-  ];
-  const allY = [
-    ...layout.nodes.map(n => n.y),
-    ...layout.nodes.map(n => n.y + n.height),
-    ...layout.groups.map(g => g.y),
-    ...layout.groups.map(g => g.y + g.height),
-  ];
-
-  const minX = allX.length > 0 ? Math.min(...allX) : 0;
-  const minY = allY.length > 0 ? Math.min(...allY) : 0;
-  const maxX = allX.length > 0 ? Math.max(...allX) : 100;
-  const maxY = allY.length > 0 ? Math.max(...allY) : 100;
-
-  const viewBox = `${minX - padding} ${minY - padding} ${maxX - minX + padding * 2} ${maxY - minY + padding * 2}`;
+  const viewBox = computeViewBox(layout, padding);
 
   return (
     <svg
