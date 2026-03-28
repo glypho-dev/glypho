@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { renderSvg, render } from '../src/svg/render-svg.js';
+import { parseDot } from '@glypho/parser';
 import type { Graph } from '@glypho/parser';
 
 function emptyGraph(overrides: Partial<Graph> = {}): Graph {
@@ -196,8 +197,7 @@ describe('renderSvg', () => {
     expect(svg).toMatch(/marker-end="url\(#arrowhead-\d+\)"/);
   });
 
-  it('neutralizes hostile color via DOT import path', () => {
-    // Simulates the attack vector: DOT import preserves arbitrary color strings
+  it('neutralizes hostile color in direct Graph construction', () => {
     const svg = renderSvg(emptyGraph({
       nodes: [{ id: 'a' }, { id: 'b' }],
       edges: [{ from: 'a', to: 'b', op: '>', color: '#"><svg onload=alert(1)>' }],
@@ -207,6 +207,15 @@ describe('renderSvg', () => {
     // No attacker-controlled content in marker IDs
     expect(svg).not.toMatch(/id="arrowhead[^"]*onload/);
     expect(svg).not.toMatch(/id="arrowhead[^"]*<svg/);
+  });
+
+  it('neutralizes hostile color via parseDot end-to-end', () => {
+    const dot = `digraph { a -> b [color="\\"><svg onload=alert(1)>"] }`;
+    const { graph } = parseDot(dot);
+    const svg = renderSvg(graph);
+    expect(svg).not.toContain('onload');
+    expect(svg).not.toContain('alert');
+    expect(svg).not.toMatch(/id="arrowhead[^"]*onload/);
   });
 
   it('handles valid non-default edge colors with indexed markers', () => {
