@@ -227,6 +227,7 @@ glypho info flow.g                # stats + token comparison across formats
 glypho render flow.g              # render to SVG (stdout path)
 glypho render flow.g -o out.svg   # render to SVG file
 glypho render flow.g -f png       # render to PNG
+glypho render flow.g -b white     # render with background color
 glypho preview out.svg            # open SVG in browser
 glypho to mermaid flow.g          # convert .g to Mermaid
 glypho from mermaid flow.mmd      # convert Mermaid to .g
