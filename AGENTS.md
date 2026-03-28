@@ -58,7 +58,7 @@ npm run build                            # build all
 - TypeScript strict mode throughout
 - Parser uses recursive descent (no parser generators)
 - Layout engine is pure computation (dagre, no DOM/browser dependency)
-- SVG string renderer uses `escapeXml()` for all user-derived attribute values
+- SVG string renderer uses `escapeXml()` for all user-derived attribute values; marker IDs from colors validated with `isValidHex()` to block injection
 - React component is a thin wrapper over the layout engine; React is an optional peer dep
 - SVG output only (no canvas/WebGL)
 

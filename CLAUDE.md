@@ -44,9 +44,11 @@ Monorepo uses npm workspaces.
 - `render(source, options?): { svg, errors }` — `.g` text in → SVG string out (no React)
 - `renderSvg(graph, options?): string` — Graph AST → SVG string (no React)
 - `RenderSvgOptions`: `{ width?, height?, padding? }`
-- `<GlyphoGraph graph={graph} />` — React component (SVG output, click handlers)
+- `<GlyphoGraph graph={graph} />` — React component (SVG output, `onNodeClick`, `onEdgeClick`)
+- `GlyphoGraphProps`: `{ graph, width?, height?, padding?, className?, style?, onNodeClick?, onEdgeClick? }`
 - `computeLayout(graph): LayoutResult` — dagre-based auto-layout
-- Utilities: `measureNode`, `measureText`, `resolveNodeStyle`, `resolveEdgeColor`
+- Types: `LayoutNode`, `LayoutEdge`, `LayoutGroup`, `LayoutResult`, `Point`, `NodeStyle`
+- Utilities: `measureNode`, `measureText`, `resolveNodeStyle`, `resolveEdgeColor`, `computeViewBox`
 
 **CLI** (`@glypho/cli` → `glypho` command):
 - `glypho check [file]` — validate `.g` files (`--json` for machine output)
@@ -73,5 +75,5 @@ Monorepo uses npm workspaces.
 1. Grammar changes → update `spec/grammar.ebnf`, `spec/specification.md`, and `packages/parser/src/types.ts`
 2. All parser changes need tests
 3. Renderer: layout engine and SVG string emitter are pure (no DOM); React component is a thin wrapper
-4. SVG string renderer must escape all user-derived values via `escapeXml()` (labels, style properties, colors)
+4. SVG string renderer must escape all user-derived values via `escapeXml()` (labels, style properties, colors); marker IDs derived from colors must be sanitized with `isValidHex()` to prevent SVG injection
 5. Full spec: `spec/specification.md`
