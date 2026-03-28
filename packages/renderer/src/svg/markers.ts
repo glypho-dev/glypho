@@ -10,13 +10,13 @@ function markerId(base: string, color: string): string {
 function markerTriple(color: string): string {
   const esc = escapeXml(color);
   const suffix = color === DEFAULT_COLOR ? '' : `-${color.replace('#', '')}`;
-  return `<marker id="arrowhead${suffix}" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">\
+  return `<marker id="arrowhead${suffix}" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">\
 <polygon points="0 0, 10 3.5, 0 7" fill="${esc}"/>\
 </marker>\
-<marker id="arrowhead-thick${suffix}" markerWidth="14" markerHeight="10" refX="13" refY="5" orient="auto" markerUnits="userSpaceOnUse">\
+<marker id="arrowhead-thick${suffix}" markerWidth="14" markerHeight="10" refX="0" refY="5" orient="auto" markerUnits="userSpaceOnUse">\
 <polygon points="0 0, 14 5, 0 10" fill="${esc}"/>\
 </marker>\
-<marker id="arrowhead-reverse${suffix}" markerWidth="10" markerHeight="7" refX="1" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">\
+<marker id="arrowhead-reverse${suffix}" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">\
 <polygon points="10 0, 0 3.5, 10 7" fill="${esc}"/>\
 </marker>`;
 }
