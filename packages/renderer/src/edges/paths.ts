@@ -34,6 +34,38 @@ function midpoint(a: Point, b: Point): Point {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }
 
+// Arrowhead lengths must match markerWidth in markers
+export const ARROW_END_LENGTH: Record<string, number> = { '>': 10, '~': 10, '=': 14, '<>': 10 };
+export const ARROW_START_LENGTH: Record<string, number> = { '<>': 10 };
+
+export function shortenEnd(pts: Point[], amount: number): Point[] {
+  if (pts.length < 2) return pts;
+  const result = pts.map(p => ({ ...p }));
+  const last = result[result.length - 1];
+  const prev = result[result.length - 2];
+  const dx = last.x - prev.x;
+  const dy = last.y - prev.y;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len <= amount) return result;
+  const r = (len - amount) / len;
+  result[result.length - 1] = { x: prev.x + dx * r, y: prev.y + dy * r };
+  return result;
+}
+
+export function shortenStart(pts: Point[], amount: number): Point[] {
+  if (pts.length < 2) return pts;
+  const result = pts.map(p => ({ ...p }));
+  const first = result[0];
+  const next = result[1];
+  const dx = next.x - first.x;
+  const dy = next.y - first.y;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len <= amount) return result;
+  const r = amount / len;
+  result[0] = { x: first.x + dx * r, y: first.y + dy * r };
+  return result;
+}
+
 /** Get the midpoint of a path (for label placement) */
 export function pathMidpoint(points: Point[]): Point {
   if (points.length === 0) return { x: 0, y: 0 };

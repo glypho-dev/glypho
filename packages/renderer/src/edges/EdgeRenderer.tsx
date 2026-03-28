@@ -1,6 +1,6 @@
 import type { EdgeOp } from '@glypho/parser';
 import type { LayoutEdge } from '../layout/types.js';
-import { pointsToPath, pathMidpoint } from './paths.js';
+import { pointsToPath, pathMidpoint, shortenEnd, shortenStart, ARROW_END_LENGTH, ARROW_START_LENGTH } from './paths.js';
 import { resolveEdgeColor } from '../styles/resolve.js';
 import { markerEndRef, markerStartRef } from './markers.js';
 
@@ -23,9 +23,17 @@ const EDGE_VISUALS: Record<EdgeOp, EdgeVisual> = {
 };
 
 export function EdgePath({ layoutEdge, onClick }: EdgePathProps) {
-  const { edge, points } = layoutEdge;
+  const { edge } = layoutEdge;
+  let points = layoutEdge.points;
   const color = resolveEdgeColor(edge.color);
   const visual = EDGE_VISUALS[edge.op];
+
+  // Shorten path so stroke ends behind the arrowhead base
+  const endLen = ARROW_END_LENGTH[edge.op];
+  if (endLen) points = shortenEnd(points, endLen);
+  const startLen = ARROW_START_LENGTH[edge.op];
+  if (startLen) points = shortenStart(points, startLen);
+
   const d = pointsToPath(points);
 
   return (

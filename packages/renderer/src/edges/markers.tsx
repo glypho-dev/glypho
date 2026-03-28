@@ -13,7 +13,7 @@ function MarkerTriple({ color }: { color: string }) {
         id={`arrowhead${suffix}`}
         markerWidth={10}
         markerHeight={7}
-        refX={9}
+        refX={0}
         refY={3.5}
         orient="auto"
         markerUnits="userSpaceOnUse"
@@ -24,7 +24,7 @@ function MarkerTriple({ color }: { color: string }) {
         id={`arrowhead-thick${suffix}`}
         markerWidth={14}
         markerHeight={10}
-        refX={13}
+        refX={0}
         refY={5}
         orient="auto"
         markerUnits="userSpaceOnUse"
@@ -35,7 +35,7 @@ function MarkerTriple({ color }: { color: string }) {
         id={`arrowhead-reverse${suffix}`}
         markerWidth={10}
         markerHeight={7}
-        refX={1}
+        refX={10}
         refY={3.5}
         orient="auto"
         markerUnits="userSpaceOnUse"
