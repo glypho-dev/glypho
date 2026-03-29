@@ -1,6 +1,6 @@
 <h1 align="center">Glypho</h1>
 <p align="center">
-  The shortest way to write flowcharts as text.
+  The shortest way to write diagrams as text.
 </p>
 
 <p align="center">
@@ -15,12 +15,12 @@
 
 ## What is Glypho?
 
-Glypho (`.g` format) is a compact text notation for flowcharts and diagrams. You describe nodes and connections in a few short lines, and Glypho renders them as SVG.
+Glypho (`.g` format) is a compact text notation for diagrams. You describe nodes and connections in a few short lines, and Glypho renders them as SVG.
 
 Think of it like Mermaid, but radically shorter. Where other formats need verbose syntax, keywords, and brackets, `.g` uses single-character operators and one-line-per-thing simplicity. It was designed from the ground up for LLMs — small enough to fit in prompts, regular enough for AI to generate correctly, and expressive enough for real diagrams.
 
 **Use it to:**
-- Turn quick ideas into visual flowcharts
+- Turn quick ideas into visual diagrams
 - Let LLMs generate diagrams without burning through your token budget
 - Convert existing Mermaid or Graphviz diagrams to a more compact form
 - Embed diagram rendering in your apps (pure SVG, no DOM needed)
