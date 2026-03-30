@@ -1,0 +1,11 @@
+>TB
+A "Start"
+B "Process"
+C:d "Decision"
+D "End"
+E "Log"
+A > B "next"
+B > C "check"
+C > D "yes"
+C > E "no"
+E > B "retry"

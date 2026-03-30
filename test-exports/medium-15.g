@@ -1,0 +1,38 @@
+>TB
+req "HTTP Request"
+auth "Auth Middleware"
+validate:d "Validate Input"
+cache "Cache Lookup"
+hit:o "Cache Hit"
+miss "Cache Miss"
+db "Database Query"
+transform "Transform Data"
+serialize "Serialize JSON"
+compress "Gzip Compress"
+log "Access Log"
+metrics "Emit Metrics"
+err:h "Error Handler"
+resp "HTTP Response"
+retry:p "Retry Queue"
+
+req > auth "authenticate"
+auth > validate "check payload"
+validate > cache "valid"
+validate > err "invalid"
+cache > hit "found"
+cache > miss "not found"
+miss > db "query"
+db > transform "rows"
+hit > serialize "data"
+transform > serialize "data"
+serialize > compress "json"
+compress > resp "send"
+resp > log "log"
+resp > metrics "track"
+err > resp "error json"
+db > retry "timeout"
+retry ~ db "retry"
+
+@middleware { auth validate }
+@dataflow { cache hit miss db transform }
+@output { serialize compress resp }
