@@ -28,14 +28,50 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Verify tag matches package version
+      - name: Verify lockstep versions and tag match
         run: |
           TAG="${GITHUB_REF#refs/tags/v}"
-          PKG_VERSION=$(node -e "console.log(require('./packages/parser/package.json').version)")
-          if [ "$TAG" != "$PKG_VERSION" ]; then
-            echo "::error::Tag v$TAG does not match package version $PKG_VERSION"
+          PARSER_V=$(node -e "console.log(require('./packages/parser/package.json').version)")
+          RENDERER_V=$(node -e "console.log(require('./packages/renderer/package.json').version)")
+          CLI_V=$(node -e "console.log(require('./packages/cli/package.json').version)")
+          GLYPHO_V=$(node -e "console.log(require('./packages/glypho/package.json').version)")
+
+          # All four packages must be at the same version
+          if [ "$PARSER_V" != "$RENDERER_V" ] || [ "$PARSER_V" != "$CLI_V" ] || [ "$PARSER_V" != "$GLYPHO_V" ]; then
+            echo "::error::Package versions are not in lockstep: parser=$PARSER_V renderer=$RENDERER_V cli=$CLI_V glypho=$GLYPHO_V"
             exit 1
           fi
+
+          # Tag must match the lockstep version
+          if [ "$TAG" != "$PARSER_V" ]; then
+            echo "::error::Tag v$TAG does not match package version $PARSER_V"
+            exit 1
+          fi
+
+          # Internal dependency versions must match lockstep version
+          RENDERER_PARSER_DEP=$(node -e "console.log(require('./packages/renderer/package.json').dependencies['@glypho/parser'])")
+          CLI_PARSER_DEP=$(node -e "console.log(require('./packages/cli/package.json').dependencies['@glypho/parser'])")
+          CLI_RENDERER_DEP=$(node -e "console.log(require('./packages/cli/package.json').dependencies['@glypho/renderer'])")
+          GLYPHO_PARSER_DEP=$(node -e "console.log(require('./packages/glypho/package.json').dependencies['@glypho/parser'])")
+          GLYPHO_RENDERER_DEP=$(node -e "console.log(require('./packages/glypho/package.json').dependencies['@glypho/renderer'])")
+
+          FAIL=0
+          for DEP_PAIR in \
+            "renderer->parser:$RENDERER_PARSER_DEP" \
+            "cli->parser:$CLI_PARSER_DEP" \
+            "cli->renderer:$CLI_RENDERER_DEP" \
+            "glypho->parser:$GLYPHO_PARSER_DEP" \
+            "glypho->renderer:$GLYPHO_RENDERER_DEP"; do
+            LABEL="${DEP_PAIR%%:*}"
+            DEP_V="${DEP_PAIR##*:}"
+            if [ "$DEP_V" != "$PARSER_V" ]; then
+              echo "::error::$LABEL dependency is $DEP_V, expected $PARSER_V"
+              FAIL=1
+            fi
+          done
+          if [ "$FAIL" -eq 1 ]; then exit 1; fi
+
+          echo "All packages at v$PARSER_V, tag matches, dependencies valid"
 
       - name: Determine npm dist-tag
         id: dist-tag
