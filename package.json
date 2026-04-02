@@ -1,9 +1,9 @@
 {
-  "name": "glypho",
+  "name": "glypho-monorepo",
   "private": true,
   "workspaces": ["packages/*"],
   "scripts": {
-    "build": "npm run build --workspace=packages/cli",
+    "build": "npm run build --workspace=packages/cli && npm run build --workspace=packages/glypho",
     "test": "npm test --workspaces --if-present",
     "publish:packages": "bash scripts/publish-packages.sh"
   }

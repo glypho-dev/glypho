@@ -4,6 +4,7 @@
 </p>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/glypho"><img src="https://img.shields.io/npm/v/glypho?label=glypho&color=blue" alt="npm glypho"></a>
   <a href="https://www.npmjs.com/package/@glypho/parser"><img src="https://img.shields.io/npm/v/@glypho/parser?label=%40glypho%2Fparser&color=blue" alt="npm parser"></a>
   <a href="https://www.npmjs.com/package/@glypho/renderer"><img src="https://img.shields.io/npm/v/@glypho/renderer?label=%40glypho%2Frenderer&color=blue" alt="npm renderer"></a>
   <a href="https://www.npmjs.com/package/@glypho/cli"><img src="https://img.shields.io/npm/v/@glypho/cli?label=%40glypho%2Fcli&color=blue" alt="npm cli"></a>
@@ -174,7 +175,9 @@ The [Features](#features) table above is a quick cheat sheet.
 ## Install
 
 ```bash
-npm install @glypho/parser @glypho/renderer
+npm install glypho                        # parser + SVG renderer (no React)
+npm install glypho react                  # with React component support
+npm install @glypho/parser @glypho/renderer  # or install scoped packages directly
 ```
 
 For the CLI:
@@ -257,6 +260,7 @@ All commands accept `-` for stdin or read from stdin when input is piped. See th
 | [`@glypho/parser`](packages/parser/) | Lexer + recursive descent parser, AST types, serializers, Mermaid/DOT converters |
 | [`@glypho/renderer`](packages/renderer/) | Layout engine, pure SVG renderer, React component |
 | [`@glypho/cli`](packages/cli/) | CLI tool for validation, rendering, and format conversion |
+| [`glypho`](packages/glypho/) | Umbrella package: one install for parser + renderer |
 
 ---
 
@@ -269,7 +273,7 @@ npm run build
 npm test
 ```
 
-Build order matters (parser → renderer → cli). `npm run build` handles this automatically.
+Build order matters (parser → renderer → cli → glypho). `npm run build` handles this automatically.
 
 ---
 

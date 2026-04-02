@@ -35,6 +35,12 @@ packages/cli/          @glypho/cli — CLI tool (glypho command)
   src/lib/             IO helpers, format detection, SVG/PNG rendering
   tests/               Vitest suite
 
+packages/glypho/       glypho — umbrella package (re-exports parser + renderer)
+  src/index.ts         Default entry: parser + SVG renderer (no React)
+  src/react.ts         React entry: adds GlyphoGraph component
+  cli-wrapper.cjs      Bin proxy to @glypho/cli
+  src/__tests__/       Export smoke tests
+
 spec/                  EBNF grammar, specification, example `.g` files
 ```
 
@@ -43,7 +49,7 @@ spec/                  EBNF grammar, specification, example `.g` files
 - **Runtime**: Node.js, npm workspaces
 - **Test framework**: Vitest
 - **TypeScript**: strict mode, all packages
-- **Build order**: parser → renderer → cli
+- **Build order**: parser → renderer → cli → glypho
 
 ```bash
 npm test                                 # run all workspace tests

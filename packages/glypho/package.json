@@ -1,0 +1,53 @@
+{
+  "name": "glypho",
+  "version": "0.1.2",
+  "description": "LLM-optimized graph notation — parse, render, and convert .g diagrams",
+  "license": "MIT",
+  "author": "glypho-dev",
+  "homepage": "https://glypho.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/glypho-dev/glypho.git",
+    "directory": "packages/glypho"
+  },
+  "keywords": ["graph", "diagram", "notation", "glypho", "parser", "renderer", "svg", "react"],
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "default": "./dist/react.js"
+    }
+  },
+  "bin": {
+    "glypho": "./cli-wrapper.cjs"
+  },
+  "files": ["dist", "cli-wrapper.cjs"],
+  "scripts": {
+    "prebuild": "cd ../.. && npm run build --workspace=packages/renderer",
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@glypho/parser": "0.1.2",
+    "@glypho/renderer": "0.1.2"
+  },
+  "peerDependencies": {
+    "react": "^18 || ^19"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

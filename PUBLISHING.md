@@ -4,25 +4,26 @@ This document defines the current publishing policy for the `@glypho/*` npm pack
 
 ## Current Policy
 
-Glypho currently publishes these three packages together:
+Glypho currently publishes these four packages together:
 
 - `@glypho/parser`
 - `@glypho/renderer`
 - `@glypho/cli`
+- `glypho` (umbrella — re-exports parser + renderer)
 
 Even though these are separate npm packages, they are tightly coupled:
 
 - `@glypho/renderer` depends on `@glypho/parser`
-- `@glypho/cli` depends on `@glypho/parser`
-- `@glypho/cli` depends on `@glypho/renderer`
+- `@glypho/cli` depends on `@glypho/parser` and `@glypho/renderer`
+- `glypho` depends on `@glypho/parser` and `@glypho/renderer`
 
 Because of that, the current policy is:
 
 1. Use lockstep versioning.
-2. Keep all three packages on the same version.
-3. Publish all three packages together.
-4. Publish in dependency order: parser, then renderer, then cli.
-5. Manage versions manually for now, since this is still a small solo-maintained repo.
+2. Keep all four packages on the same version.
+3. Publish all four packages together.
+4. Publish in dependency order: parser, then renderer, then cli, then glypho.
+5. Automated publishing via GitHub Actions on `v*` tags, with manual fallback script.
 
 This policy can change later if the packages become more independent.
 
@@ -35,8 +36,9 @@ For this repo:
 - `packages/parser/package.json`
 - `packages/renderer/package.json`
 - `packages/cli/package.json`
+- `packages/glypho/package.json`
 
-GitHub tags and releases do not control the npm package version. They are optional markers only.
+GitHub tags trigger automated publishing. The tag version must match the package versions.
 
 ## Release Strategy
 
@@ -44,7 +46,7 @@ Current strategy:
 
 1. Start from `0.1.0` for the first public release.
 2. Stay below `1.0.0` while the public API is still evolving.
-3. Bump all three packages together.
+3. Bump all four packages together.
 
 Suggested bump rules:
 
@@ -53,11 +55,29 @@ Suggested bump rules:
 - Pre-1.0 breaking change: `0.2.0` -> `0.3.0` for bigger incompatible changes before stability
 - Stable release: move to `1.0.0` once the public surface is intentionally stable
 
+## Automated Publishing (GitHub Actions)
+
+Pushing a version tag triggers the publish workflow:
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+The workflow (`.github/workflows/publish.yml`):
+1. Verifies the tag version matches the package versions.
+2. Builds and tests all packages.
+3. Publishes in dependency order: parser → renderer → cli → glypho.
+4. Uses `--provenance` for npm attestation.
+5. Detects pre-release versions (e.g., `0.2.0-beta.1`) and publishes with `--tag next`.
+
+**Prerequisite**: An `NPM_TOKEN` secret must be configured in the GitHub repo settings (npm automation token with publish access to `@glypho` scope and `glypho` package).
+
 ## Manual Release Checklist
 
 Before publishing:
 
-1. Update the version in all three package manifests.
+1. Update the version in all four package manifests.
 2. Update internal dependency versions so they match the new lockstep version.
 3. Confirm package READMEs are ready for npm users.
 4. Run the full repo test suite.
@@ -69,11 +89,12 @@ Publishing order:
 1. Publish `@glypho/parser`
 2. Publish `@glypho/renderer`
 3. Publish `@glypho/cli`
+4. Publish `glypho`
 
 After publishing:
 
 1. Verify each package/version on npm.
-2. Optionally create a matching git tag or GitHub release.
+2. Create a matching git tag or GitHub release.
 
 ## First Publish Notes
 
@@ -103,12 +124,12 @@ bash scripts/publish-packages.sh
 
 What the script does:
 
-1. Verifies all three package versions match.
+1. Verifies all four package versions match.
 2. Verifies internal dependency versions match the same lockstep version.
 3. Refuses to publish from a dirty git worktree.
 4. Runs `npm test`.
 5. Runs `npm run build`.
-6. Publishes parser, then renderer, then cli.
+6. Publishes parser, then renderer, then cli, then glypho.
 
 ## When To Revisit This Policy
 

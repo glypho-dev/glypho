@@ -1,0 +1,96 @@
+name: Publish
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: rm -rf node_modules package-lock.json && npm install
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Verify tag matches package version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          PKG_VERSION=$(node -e "console.log(require('./packages/parser/package.json').version)")
+          if [ "$TAG" != "$PKG_VERSION" ]; then
+            echo "::error::Tag v$TAG does not match package version $PKG_VERSION"
+            exit 1
+          fi
+
+      - name: Determine npm dist-tag
+        id: dist-tag
+        run: |
+          VERSION=$(node -e "console.log(require('./packages/parser/package.json').version)")
+          if [[ "$VERSION" == *-* ]]; then
+            echo "tag=next" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish @glypho/parser
+        run: |
+          npm publish --workspace=packages/parser --access public --tag ${{ steps.dist-tag.outputs.tag }} --provenance || {
+            if npm view @glypho/parser@$(node -e "console.log(require('./packages/parser/package.json').version)") > /dev/null 2>&1; then
+              echo "Already published, skipping"
+            else
+              exit 1
+            fi
+          }
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @glypho/renderer
+        run: |
+          npm publish --workspace=packages/renderer --access public --tag ${{ steps.dist-tag.outputs.tag }} --provenance || {
+            if npm view @glypho/renderer@$(node -e "console.log(require('./packages/renderer/package.json').version)") > /dev/null 2>&1; then
+              echo "Already published, skipping"
+            else
+              exit 1
+            fi
+          }
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @glypho/cli
+        run: |
+          npm publish --workspace=packages/cli --access public --tag ${{ steps.dist-tag.outputs.tag }} --provenance || {
+            if npm view @glypho/cli@$(node -e "console.log(require('./packages/cli/package.json').version)") > /dev/null 2>&1; then
+              echo "Already published, skipping"
+            else
+              exit 1
+            fi
+          }
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish glypho
+        run: |
+          npm publish --workspace=packages/glypho --access public --tag ${{ steps.dist-tag.outputs.tag }} --provenance || {
+            if npm view glypho@$(node -e "console.log(require('./packages/glypho/package.json').version)") > /dev/null 2>&1; then
+              echo "Already published, skipping"
+            else
+              exit 1
+            fi
+          }
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

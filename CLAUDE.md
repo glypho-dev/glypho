@@ -14,7 +14,7 @@ npm test --workspace=packages/cli        # CLI only
 node packages/cli/dist/index.js --help   # CLI usage (after build)
 ```
 
-Build order matters: parser → renderer → cli (`npm run build` handles this).
+Build order matters: parser → renderer → cli → glypho (`npm run build` handles this).
 
 ## Architecture
 
@@ -23,6 +23,7 @@ Build order matters: parser → renderer → cli (`npm run build` handles this).
 | `@glypho/parser` | `packages/parser/` | Lexer + recursive descent parser → AST |
 | `@glypho/renderer` | `packages/renderer/` | Layout engine + pure SVG renderer + React component |
 | `@glypho/cli` | `packages/cli/` | CLI tool: check, parse, info, render, preview, convert |
+| `glypho` | `packages/glypho/` | Umbrella package: re-exports parser + renderer, CLI bin proxy |
 | Spec | `spec/` | EBNF grammar, specification, examples |
 
 Monorepo uses npm workspaces.
@@ -49,6 +50,13 @@ Monorepo uses npm workspaces.
 - `computeLayout(graph): LayoutResult` — dagre-based auto-layout
 - Types: `LayoutNode`, `LayoutEdge`, `LayoutGroup`, `LayoutResult`, `Point`, `NodeStyle`
 - Utilities: `measureNode`, `measureText`, `resolveNodeStyle`, `resolveEdgeColor`, `computeViewBox`
+
+**Umbrella** (`glypho`):
+- Two entry points:
+  - `glypho` — parser + SVG renderer (no React dependency)
+  - `glypho/react` — adds `GlyphoGraph` React component
+- Re-exports all parser and renderer APIs — `import { parse, render } from 'glypho'`
+- `bin` proxy to `@glypho/cli` (CLI must be separately installed)
 
 **CLI** (`@glypho/cli` → `glypho` command):
 - `glypho check [file]` — validate `.g` files (`--json` for machine output)

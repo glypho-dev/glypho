@@ -20,6 +20,7 @@ Publishes the Glypho npm packages in dependency order:
   1. @glypho/parser
   2. @glypho/renderer
   3. @glypho/cli
+  4. glypho (umbrella)
 
 Options:
   --dry-run    Run npm publish in dry-run mode
@@ -68,16 +69,19 @@ process.stdout.write(String(value));
 PARSER_PKG="packages/parser/package.json"
 RENDERER_PKG="packages/renderer/package.json"
 CLI_PKG="packages/cli/package.json"
+GLYPHO_PKG="packages/glypho/package.json"
 
 PARSER_VERSION="$(read_json_field "$PARSER_PKG" 'data.version')"
 RENDERER_VERSION="$(read_json_field "$RENDERER_PKG" 'data.version')"
 CLI_VERSION="$(read_json_field "$CLI_PKG" 'data.version')"
+GLYPHO_VERSION="$(read_json_field "$GLYPHO_PKG" 'data.version')"
 
-if [[ "$PARSER_VERSION" != "$RENDERER_VERSION" || "$PARSER_VERSION" != "$CLI_VERSION" ]]; then
+if [[ "$PARSER_VERSION" != "$RENDERER_VERSION" || "$PARSER_VERSION" != "$CLI_VERSION" || "$PARSER_VERSION" != "$GLYPHO_VERSION" ]]; then
   echo "error: package versions are not in lockstep" >&2
   echo "  parser:   $PARSER_VERSION" >&2
   echo "  renderer: $RENDERER_VERSION" >&2
   echo "  cli:      $CLI_VERSION" >&2
+  echo "  glypho:   $GLYPHO_VERSION" >&2
   exit 1
 fi
 
@@ -98,6 +102,19 @@ fi
 
 if [[ "$CLI_RENDERER_DEP" != "$LOCKSTEP_VERSION" ]]; then
   echo "error: packages/cli/package.json depends on @glypho/renderer@$CLI_RENDERER_DEP, expected $LOCKSTEP_VERSION" >&2
+  exit 1
+fi
+
+GLYPHO_PARSER_DEP="$(read_json_field "$GLYPHO_PKG" "data.dependencies['@glypho/parser']")"
+GLYPHO_RENDERER_DEP="$(read_json_field "$GLYPHO_PKG" "data.dependencies['@glypho/renderer']")"
+
+if [[ "$GLYPHO_PARSER_DEP" != "$LOCKSTEP_VERSION" ]]; then
+  echo "error: packages/glypho/package.json depends on @glypho/parser@$GLYPHO_PARSER_DEP, expected $LOCKSTEP_VERSION" >&2
+  exit 1
+fi
+
+if [[ "$GLYPHO_RENDERER_DEP" != "$LOCKSTEP_VERSION" ]]; then
+  echo "error: packages/glypho/package.json depends on @glypho/renderer@$GLYPHO_RENDERER_DEP, expected $LOCKSTEP_VERSION" >&2
   exit 1
 fi
 
@@ -133,5 +150,6 @@ publish_workspace() {
 publish_workspace "packages/parser" "@glypho/parser"
 publish_workspace "packages/renderer" "@glypho/renderer"
 publish_workspace "packages/cli" "@glypho/cli"
+publish_workspace "packages/glypho" "glypho"
 
 echo "Done."
