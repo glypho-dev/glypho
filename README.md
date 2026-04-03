@@ -174,64 +174,83 @@ The [Features](#features) table above is a quick cheat sheet.
 
 ## Install
 
+### Library — parse and render `.g` in your app
+
 ```bash
-npm install glypho                        # parser + SVG renderer (no React)
-npm install glypho react                  # with React component support
-npm install @glypho/parser @glypho/renderer  # or install scoped packages directly
+npm install glypho
 ```
 
-For the CLI:
+This gives you the parser and SVG renderer. No React, no DOM, no heavy dependencies.
+
+```typescript
+import { parse, render } from 'glypho';
+
+const { svg } = render('a:r Hello\nb:c World\na>b');
+// svg is a complete SVG string — embed in HTML, write to file, serve from API
+```
+
+Need the React component? Add React as a peer:
 
 ```bash
-npm install -g @glypho/cli    # install
+npm install glypho react
+```
+
+```tsx
+import { GlyphoGraph } from 'glypho/react';
+import { parse } from 'glypho';
+
+const { graph } = parse('a:r Hello\nb:c World\na>b');
+
+<GlyphoGraph graph={graph} width={800} height={600} />
+```
+
+### CLI — render, validate, and convert from the terminal
+
+```bash
+npm install -g @glypho/cli    # install globally
 npm update -g @glypho/cli     # update to latest
+```
+
+Or use locally without installing globally:
+
+```bash
+npm install @glypho/cli
+npx glypho render flow.g -o flow.svg
+```
+
+### Batch render — convert a folder of `.g` files to SVG
+
+```bash
+for f in diagrams/*.g; do
+  glypho render "$f" -o "${f%.g}.svg"
+done
+```
+
+Or programmatically in a Node script:
+
+```typescript
+import { render } from 'glypho';
+import { readFileSync, writeFileSync, readdirSync } from 'fs';
+
+for (const file of readdirSync('diagrams').filter(f => f.endsWith('.g'))) {
+  const { svg } = render(readFileSync(`diagrams/${file}`, 'utf8'));
+  writeFileSync(`diagrams/${file.replace('.g', '.svg')}`, svg);
+}
+```
+
+### Scoped packages
+
+You can also install the individual packages directly:
+
+```bash
+npm install @glypho/parser              # parser only
+npm install @glypho/renderer            # renderer only (includes parser as dependency)
+npm install @glypho/parser @glypho/renderer  # both
 ```
 
 ---
 
-## Usage
-
-### Parse `.g` input
-
-```typescript
-import { parse } from '@glypho/parser';
-
-const { graph, errors } = parse(`
->LR
-a:r "Start"
-b:r "End"
-a>b success
-`);
-// graph.nodes, graph.edges, graph.groups, graph.positions, graph.styles
-// errors[] for any parse issues (parser recovers and continues)
-```
-
-### Render SVG (no React needed)
-
-```typescript
-import { render } from '@glypho/renderer/svg';
-
-const { svg, errors } = render(`a:r Hello\nb:c World\na>b`);
-// svg is a complete SVG string — write to file, serve from API, etc.
-```
-
-### React component
-
-```tsx
-import { parse } from '@glypho/parser';
-import { GlyphoGraph } from '@glypho/renderer';
-
-const { graph } = parse(`a:r Hello\nb:c World\na>b`);
-
-<GlyphoGraph
-  graph={graph}
-  width={800}
-  height={600}
-  onNodeClick={(id) => console.log(id)}
-/>
-```
-
-### CLI
+## CLI Reference
 
 ```bash
 glypho check flow.g               # validate syntax
@@ -239,7 +258,7 @@ glypho check flow.g --json        # machine-readable validation
 glypho parse flow.g               # print JSON AST
 glypho parse flow.g --compact     # minified JSON AST
 glypho info flow.g                # stats + token comparison across formats
-glypho render flow.g              # render to SVG (stdout path)
+glypho render flow.g              # render to SVG (stdout)
 glypho render flow.g -o out.svg   # render to SVG file
 glypho render flow.g -f png       # render to PNG
 glypho render flow.g -b white     # render with background color
