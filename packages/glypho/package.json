@@ -1,6 +1,6 @@
 {
   "name": "glypho",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "LLM-optimized graph notation — parse, render, and convert .g diagrams",
   "license": "MIT",
   "author": "glypho-dev",
@@ -33,8 +33,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@glypho/parser": "0.1.2",
-    "@glypho/renderer": "0.1.2"
+    "@glypho/parser": "0.1.3",
+    "@glypho/renderer": "0.1.3"
   },
   "peerDependencies": {
     "react": "^18 || ^19"

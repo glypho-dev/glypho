@@ -1,6 +1,6 @@
 {
   "name": "@glypho/parser",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Lexer and recursive-descent parser for the .g graph notation format",
   "license": "MIT",
   "author": "glypho-dev",
