@@ -24,10 +24,7 @@
       "default": "./dist/react.js"
     }
   },
-  "bin": {
-    "glypho": "./cli-wrapper.cjs"
-  },
-  "files": ["dist", "cli-wrapper.cjs"],
+  "files": ["dist"],
   "scripts": {
     "prebuild": "cd ../.. && npm run build --workspace=packages/renderer",
     "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",

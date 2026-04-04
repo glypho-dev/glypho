@@ -10,7 +10,7 @@ export npm_config_cache
 mkdir -p "$npm_config_cache"
 
 DRY_RUN=0
-NPM_TAG="latest"
+NPM_TAG=""
 
 usage() {
   cat <<'EOF'
@@ -24,7 +24,7 @@ Publishes the Glypho npm packages in dependency order:
 
 Options:
   --dry-run    Run npm publish in dry-run mode
-  --tag <tag>  Publish using a specific npm dist-tag (default: latest)
+  --tag <tag>  Publish using a specific npm dist-tag (default: latest, or next for pre-releases)
 EOF
 }
 
@@ -121,6 +121,31 @@ fi
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "error: git worktree is dirty; commit or stash changes before publishing" >&2
   exit 1
+fi
+
+CURRENT_BRANCH="$(git branch --show-current)"
+if [[ "$CURRENT_BRANCH" != "main" ]]; then
+  echo "error: publish from main only (current branch: ${CURRENT_BRANCH:-detached})" >&2
+  exit 1
+fi
+
+if git rev-parse --verify origin/main >/dev/null 2>&1; then
+  MAIN_SHA="$(git rev-parse origin/main)"
+  HEAD_SHA="$(git rev-parse HEAD)"
+  if [[ "$HEAD_SHA" != "$MAIN_SHA" ]]; then
+    echo "error: publish from the current origin/main HEAD only" >&2
+    echo "  HEAD:       $HEAD_SHA" >&2
+    echo "  origin/main:$MAIN_SHA" >&2
+    exit 1
+  fi
+fi
+
+if [[ -z "$NPM_TAG" ]]; then
+  if [[ "$LOCKSTEP_VERSION" == *-* ]]; then
+    NPM_TAG="next"
+  else
+    NPM_TAG="latest"
+  fi
 fi
 
 echo "Publishing Glypho packages at version $LOCKSTEP_VERSION"

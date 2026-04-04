@@ -38,7 +38,6 @@ packages/cli/          @glypho/cli — CLI tool (glypho command)
 packages/glypho/       glypho — umbrella package (re-exports parser + renderer)
   src/index.ts         Default entry: parser + SVG renderer (no React)
   src/react.ts         React entry: adds GlyphoGraph component
-  cli-wrapper.cjs      Bin proxy to @glypho/cli
   src/__tests__/       Export smoke tests
 
 spec/                  EBNF grammar, specification, example `.g` files

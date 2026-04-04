@@ -66,12 +66,15 @@ git push origin v0.2.0
 
 The workflow (`.github/workflows/publish.yml`):
 1. Verifies the tag version matches the package versions.
-2. Builds and tests all packages.
-3. Publishes in dependency order: parser → renderer → cli → glypho.
-4. Uses `--provenance` for npm attestation.
-5. Detects pre-release versions (e.g., `0.2.0-beta.1`) and publishes with `--tag next`.
+2. Verifies the tag points at the current `main` branch HEAD.
+3. Builds and tests all packages.
+4. Publishes in dependency order: parser → renderer → cli → glypho.
+5. Uses `--provenance` for npm attestation.
+6. Detects pre-release versions (e.g., `0.2.0-beta.1`) and publishes with `--tag next`.
 
-**Prerequisite**: An `NPM_TOKEN` secret must be configured in the GitHub repo settings (npm automation token with publish access to `@glypho` scope and `glypho` package).
+**Prerequisites**:
+- An `NPM_TOKEN` secret must be configured for the `npm-publish` GitHub Actions environment (npm automation token with publish access to `@glypho` scope and `glypho` package).
+- Protect the `npm-publish` environment with required reviewers if you want a human approval gate before publish.
 
 ## Manual Release Checklist
 
@@ -80,9 +83,10 @@ Before publishing:
 1. Update the version in all four package manifests.
 2. Update internal dependency versions so they match the new lockstep version.
 3. Confirm package READMEs are ready for npm users.
-4. Run the full repo test suite.
-5. Run the full repo build.
-6. Review the git worktree and publish from a clean state.
+4. Merge the release commit to `main`.
+5. Run the full repo test suite.
+6. Run the full repo build.
+7. Review the git worktree and publish from a clean state.
 
 Publishing order:
 
@@ -127,9 +131,11 @@ What the script does:
 1. Verifies all four package versions match.
 2. Verifies internal dependency versions match the same lockstep version.
 3. Refuses to publish from a dirty git worktree.
-4. Runs `npm test`.
-5. Runs `npm run build`.
-6. Publishes parser, then renderer, then cli, then glypho.
+4. Refuses to publish unless `HEAD` is the current `origin/main` tip.
+5. Defaults to the `next` dist-tag for pre-release versions and `latest` otherwise.
+6. Runs `npm test`.
+7. Runs `npm run build`.
+8. Publishes parser, then renderer, then cli, then glypho.
 
 ## When To Revisit This Policy
 
