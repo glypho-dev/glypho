@@ -2,7 +2,41 @@
 
 All notable changes to the Glypho packages will be documented in this file.
 
-All packages (`@glypho/parser`, `@glypho/renderer`, `@glypho/cli`) are versioned in lockstep.
+All packages (`@glypho/parser`, `@glypho/renderer`, `@glypho/cli`, `glypho`) are versioned in lockstep.
+
+## 0.1.4 — Umbrella Package README
+
+### glypho
+
+- Add README for the `glypho` npm package page
+
+---
+
+## 0.1.3 — Umbrella Package & Automated Publishing
+
+### glypho (new)
+
+- New umbrella package: `npm install glypho` gives you the parser + SVG renderer in one install
+- Two entry points: `glypho` (parser + SVG, no React) and `glypho/react` (adds GlyphoGraph component)
+- Re-exports all public APIs from `@glypho/parser` and `@glypho/renderer`
+
+### CI & Publishing
+
+- Tag-triggered npm publishing via GitHub Actions (`v*` tags)
+- Lockstep version verification before publish (all 4 packages must match)
+- Tag-to-main-HEAD verification prevents publishing from stale commits
+- npm provenance attestation (`--provenance`)
+- Pre-release support: versions like `0.2.0-beta.1` publish with `--tag next`
+- `npm-publish` environment with required reviewer approval gate
+- SHA-pinned GitHub Actions for supply chain security
+- Dependabot configured for weekly action updates
+- Manual publish script updated with branch and HEAD checks
+
+### @glypho/cli
+
+- Auto-scale PNG resolution based on graph size
+
+---
 
 ## 0.1.2 — Security Fix & React Component Parity
 
