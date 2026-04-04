@@ -75,8 +75,18 @@ The workflow (`.github/workflows/publish.yml`):
 **Prerequisites**:
 - An `NPM_TOKEN` secret must be configured for the `npm-publish` GitHub Actions environment (npm automation token with publish access to `@glypho` scope and `glypho` package).
 - Protect the `npm-publish` environment with required reviewers if you want a human approval gate before publish.
-- Restrict the `npm-publish` environment to the `main` branch only.
+- Restrict the `npm-publish` environment deployment to `v*` tags (not branches — the workflow is triggered by tag pushes, which GitHub does not treat as branch refs).
 - Do not keep `NPM_TOKEN` as a broad repository secret when the environment secret is sufficient.
+
+**Step-by-step release flow**:
+
+1. Bump versions in all four `package.json` files and internal dependency versions.
+2. Commit, open PR, merge to `main` (CI must pass).
+3. Pull main locally: `git checkout main && git pull`
+4. Tag: `git tag v0.x.x && git push origin v0.x.x`
+5. Approve the `npm-publish` environment gate in GitHub Actions.
+6. Verify packages on npm: `npm view glypho@0.x.x version`
+7. Create a GitHub Release: `gh release create v0.x.x --title "v0.x.x" --notes "..."`
 
 ## Required GitHub Configuration
 
@@ -88,7 +98,7 @@ Before relying on automated publishing, configure GitHub so the workflow assumpt
 4. Block force-pushes and branch deletion on `main`.
 5. Create an `npm-publish` environment.
 6. Store `NPM_TOKEN` in that environment.
-7. Restrict the environment to `main`.
+7. Restrict the environment deployment to `v*` tags.
 8. Optionally require reviewers for the environment to add a manual approval gate.
 
 ## Manual Release Checklist
@@ -113,7 +123,7 @@ Publishing order:
 After publishing:
 
 1. Verify each package/version on npm.
-2. Optionally create a GitHub Release for the tag (the tag itself must already exist — it triggers publishing).
+2. Create a GitHub Release for the tag: `gh release create v0.x.x --title "v0.x.x" --notes "..."`
 
 ## First Publish Notes
 
