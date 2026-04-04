@@ -14,17 +14,9 @@
 
 ---
 
-## What is Glypho?
+Glypho (`.g` format) is a compact text notation for diagrams. You describe nodes and connections in a few short lines, and Glypho renders them as SVG. Think of it like Mermaid, but radically shorter — single-character operators, one-line-per-thing, designed from the ground up for LLMs.
 
-Glypho (`.g` format) is a compact text notation for diagrams. You describe nodes and connections in a few short lines, and Glypho renders them as SVG.
-
-Think of it like Mermaid, but radically shorter. Where other formats need verbose syntax, keywords, and brackets, `.g` uses single-character operators and one-line-per-thing simplicity. It was designed from the ground up for LLMs — small enough to fit in prompts, regular enough for AI to generate correctly, and expressive enough for real diagrams.
-
-**Use it to:**
-- Turn quick ideas into visual diagrams
-- Let LLMs generate diagrams without burning through your token budget
-- Convert existing Mermaid or Graphviz diagrams to a more compact form
-- Embed diagram rendering in your apps (pure SVG, no DOM needed)
+**[Try the Glypho Editor](https://glypho.dev/editor/)** — write `.g` notation and see the rendered graph in real time, no install needed.
 
 ---
 
@@ -152,12 +144,6 @@ Glypho focuses on the **flowchart** subset of what Mermaid offers — nodes, edg
 - Mermaid flowchart import/export covers: direction, nodes/shapes, edges/labels/chains, subgraphs, `style`, `classDef`, and `class`
 - Unsupported Mermaid constructs are surfaced as parse errors, not silently dropped
 - Other Mermaid diagram families (sequence, ER, gantt, C4, state) are out of scope
-
----
-
-## Try It Online
-
-The [Glypho Editor](https://glypho.dev/editor/) lets you write `.g` notation and see the rendered graph in real time — no install needed. It's the fastest way to experiment with the format, share diagrams, or just see what Glypho can do.
 
 ---
 

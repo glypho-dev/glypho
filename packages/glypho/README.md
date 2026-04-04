@@ -1,6 +1,8 @@
 # glypho
 
-The shortest way to write diagrams as text. One install for the parser + SVG renderer.
+Compact text notation for diagrams. Describe nodes and connections in a few short lines, get SVG out. Like Mermaid, but radically shorter — designed for LLMs and humans who value brevity.
+
+**[Try the Glypho Editor](https://glypho.dev/editor/)** — write `.g` and see the graph render in real time.
 
 ```bash
 npm install glypho
