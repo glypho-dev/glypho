@@ -49,14 +49,7 @@ spec/                  EBNF grammar, specification, example `.g` files
 - **Test framework**: Vitest
 - **TypeScript**: strict mode, all packages
 - **Build order**: parser → renderer → cli → glypho
-
-```bash
-npm test                                 # run all workspace tests
-npm test --workspace=packages/parser     # parser only
-npm test --workspace=packages/renderer   # renderer only
-npm test --workspace=packages/cli        # CLI only
-npm run build                            # build all
-```
+- See CLAUDE.md for full command reference
 
 ## Coding Style
 

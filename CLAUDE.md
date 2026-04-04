@@ -49,7 +49,7 @@ Monorepo uses npm workspaces.
 - `GlyphoGraphProps`: `{ graph, width?, height?, padding?, className?, style?, onNodeClick?, onEdgeClick? }`
 - `computeLayout(graph): LayoutResult` — dagre-based auto-layout
 - Types: `LayoutNode`, `LayoutEdge`, `LayoutGroup`, `LayoutResult`, `Point`, `NodeStyle`
-- Utilities: `measureNode`, `measureText`, `resolveNodeStyle`, `resolveEdgeColor`, `computeViewBox`
+- Utilities: `measureNode`, `measureText`, `resolveNodeStyle`, `resolveEdgeColor`
 
 **Umbrella** (`glypho`):
 - Two entry points:
@@ -59,14 +59,9 @@ Monorepo uses npm workspaces.
 - CLI remains a separate package: install `@glypho/cli` for the `glypho` command
 
 **CLI** (`@glypho/cli` → `glypho` command):
-- `glypho check [file]` — validate `.g` files (`--json` for machine output)
-- `glypho parse [file]` — print JSON AST (`--compact` for minified)
-- `glypho info [file]` — stats + multi-format token comparison (`--json`)
-- `glypho render [file]` — render Glypho, Mermaid, or DOT to SVG/PNG (`-f png`, `-o path`, `--width`, `--height`, `--scale`, `-b/--background <color>`)
-- `glypho preview <file.svg>` — open an existing SVG in the default browser (`--force` to override CI/non-interactive guard)
-- `glypho to mermaid [file]` — convert `.g` to Mermaid text
-- `glypho from mermaid|dot [file]` — convert Mermaid or DOT to `.g`
-- Commands accept `-` for stdin, and when `[file]` is omitted they read from stdin if input is piped
+- Subcommands: `check`, `parse`, `info`, `render`, `preview`, `to mermaid`, `from mermaid|dot`
+- All commands accept `-` for stdin or read from stdin when piped
+- See `glypho --help` or README for full CLI reference
 
 ## Format Quick Reference
 
