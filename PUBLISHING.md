@@ -113,7 +113,7 @@ Publishing order:
 After publishing:
 
 1. Verify each package/version on npm.
-2. Create a matching git tag or GitHub release.
+2. Optionally create a GitHub Release for the tag (the tag itself must already exist — it triggers publishing).
 
 ## First Publish Notes
 
@@ -146,8 +146,8 @@ What the script does:
 1. Verifies all four package versions match.
 2. Verifies internal dependency versions match the same lockstep version.
 3. Refuses to publish from a dirty git worktree.
-4. Refuses to publish unless `HEAD` is the current `origin/main` tip.
-5. Refreshes `origin/main` before checking the current remote tip.
+4. Refuses to publish from any branch other than `main`.
+5. Refreshes `origin/main` and refuses to publish unless `HEAD` matches the remote tip.
 6. Defaults to the `next` dist-tag for pre-release versions and `latest` otherwise.
 7. Runs `npm test`.
 8. Runs `npm run build`.
