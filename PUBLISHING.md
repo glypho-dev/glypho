@@ -75,6 +75,21 @@ The workflow (`.github/workflows/publish.yml`):
 **Prerequisites**:
 - An `NPM_TOKEN` secret must be configured for the `npm-publish` GitHub Actions environment (npm automation token with publish access to `@glypho` scope and `glypho` package).
 - Protect the `npm-publish` environment with required reviewers if you want a human approval gate before publish.
+- Restrict the `npm-publish` environment to the `main` branch only.
+- Do not keep `NPM_TOKEN` as a broad repository secret when the environment secret is sufficient.
+
+## Required GitHub Configuration
+
+Before relying on automated publishing, configure GitHub so the workflow assumptions are true:
+
+1. Protect the `main` branch.
+2. Require pull requests before merge.
+3. Require CI status checks to pass before merge.
+4. Block force-pushes and branch deletion on `main`.
+5. Create an `npm-publish` environment.
+6. Store `NPM_TOKEN` in that environment.
+7. Restrict the environment to `main`.
+8. Optionally require reviewers for the environment to add a manual approval gate.
 
 ## Manual Release Checklist
 
@@ -132,10 +147,11 @@ What the script does:
 2. Verifies internal dependency versions match the same lockstep version.
 3. Refuses to publish from a dirty git worktree.
 4. Refuses to publish unless `HEAD` is the current `origin/main` tip.
-5. Defaults to the `next` dist-tag for pre-release versions and `latest` otherwise.
-6. Runs `npm test`.
-7. Runs `npm run build`.
-8. Publishes parser, then renderer, then cli, then glypho.
+5. Refreshes `origin/main` before checking the current remote tip.
+6. Defaults to the `next` dist-tag for pre-release versions and `latest` otherwise.
+7. Runs `npm test`.
+8. Runs `npm run build`.
+9. Publishes parser, then renderer, then cli, then glypho.
 
 ## When To Revisit This Policy
 

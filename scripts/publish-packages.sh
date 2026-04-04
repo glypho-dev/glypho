@@ -129,6 +129,11 @@ if [[ "$CURRENT_BRANCH" != "main" ]]; then
   exit 1
 fi
 
+git fetch origin main --depth=1 >/dev/null 2>&1 || {
+  echo "error: failed to refresh origin/main before publish" >&2
+  exit 1
+}
+
 if git rev-parse --verify origin/main >/dev/null 2>&1; then
   MAIN_SHA="$(git rev-parse origin/main)"
   HEAD_SHA="$(git rev-parse HEAD)"

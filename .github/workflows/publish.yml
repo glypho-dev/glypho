@@ -97,6 +97,15 @@ jobs:
             echo "tag=latest" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Verify npm token is configured
+        run: |
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "::error::NODE_AUTH_TOKEN is not set. Configure NPM_TOKEN in the npm-publish environment."
+            exit 1
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       - name: Publish @glypho/parser
         run: |
           npm publish --workspace=packages/parser --access public --tag ${{ steps.dist-tag.outputs.tag }} --provenance || {
