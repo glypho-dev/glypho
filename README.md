@@ -4,6 +4,13 @@
 </p>
 
 <p align="center">
+  <a href="https://glypho.dev">Website</a> ·
+  <a href="https://glypho.dev/editor/">Editor</a> ·
+  <a href="spec/specification.md">Specification</a> ·
+  <a href="https://www.npmjs.com/package/glypho">npm</a>
+</p>
+
+<p align="center">
   <a href="https://www.npmjs.com/package/glypho"><img src="https://img.shields.io/npm/v/glypho?label=glypho&color=blue" alt="npm glypho"></a>
   <a href="https://www.npmjs.com/package/@glypho/parser"><img src="https://img.shields.io/npm/v/@glypho/parser?label=%40glypho%2Fparser&color=blue" alt="npm parser"></a>
   <a href="https://www.npmjs.com/package/@glypho/renderer"><img src="https://img.shields.io/npm/v/@glypho/renderer?label=%40glypho%2Frenderer&color=blue" alt="npm renderer"></a>
@@ -15,8 +22,6 @@
 ---
 
 Glypho (`.g` format) is a compact text notation for diagrams. You describe nodes and connections in a few short lines, and Glypho renders them as SVG. Think of it like Mermaid, but radically shorter — single-character operators, one-line-per-thing, designed from the ground up for LLMs.
-
-**[Try the Glypho Editor](https://glypho.dev/editor/)** — write `.g` notation and see the rendered graph in real time, no install needed.
 
 ---
 
@@ -144,6 +149,23 @@ Glypho focuses on the **flowchart** subset of what Mermaid offers — nodes, edg
 - Mermaid flowchart import/export covers: direction, nodes/shapes, edges/labels/chains, subgraphs, `style`, `classDef`, and `class`
 - Unsupported Mermaid constructs are surfaced as parse errors, not silently dropped
 - Other Mermaid diagram families (sequence, ER, gantt, C4, state) are out of scope
+
+---
+
+## Use with AI Agents
+
+Install the Glypho skill so your AI agent can create diagrams for you:
+
+```bash
+npx skills add glypho-dev/glypho
+```
+
+Then just ask your agent things like:
+- "Draw me a user registration flow"
+- "Create an architecture diagram for my microservices"
+- "Make a CI/CD pipeline diagram"
+
+The skill teaches your agent the complete `.g` notation so it can write correct diagrams on the first try. Works with Claude Code, Cursor, Codex, Windsurf, and [40+ other AI agents](https://agentskills.io).
 
 ---
 
