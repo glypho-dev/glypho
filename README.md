@@ -160,6 +160,12 @@ Install the Glypho skill so your AI agent can create diagrams for you:
 npx skills add glypho-dev/glypho
 ```
 
+Or install globally so the skill is available in all your projects:
+
+```bash
+npx skills add glypho-dev/glypho -y -g
+```
+
 Then just ask your agent things like:
 - "Draw me a user registration flow"
 - "Create an architecture diagram for my microservices"
