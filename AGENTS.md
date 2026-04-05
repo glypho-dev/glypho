@@ -63,7 +63,7 @@ spec/                  EBNF grammar, specification, example `.g` files
 ## Testing Rules
 
 - All parser changes require tests
-- Test files live in `tests/` directories within each package
+- Test files live in `tests/` or `src/__tests__/` directories within each package
 - Use `vitest` and `describe`/`it`/`expect` patterns
 - React component tests use `@testing-library/react` with jsdom
 - Pure SVG renderer tests are plain `.test.ts` (no jsdom needed)

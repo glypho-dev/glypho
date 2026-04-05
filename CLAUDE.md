@@ -11,7 +11,8 @@ npm run build                            # build all packages
 npm test --workspace=packages/parser     # parser only
 npm test --workspace=packages/renderer   # renderer only
 npm test --workspace=packages/cli        # CLI only
-node packages/cli/dist/index.js --help   # CLI usage (after build)
+npm test --workspace=packages/glypho     # umbrella only
+npx glypho --help                        # CLI usage (after build)
 ```
 
 Build order matters: parser → renderer → cli → glypho (`npm run build` handles this).
