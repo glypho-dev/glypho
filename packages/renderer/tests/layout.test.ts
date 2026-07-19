@@ -112,7 +112,36 @@ describe('computeLayout', () => {
     expect(result.groups[1].group.id).toBe('inner');
   });
 
-  it('does not change connected node positions just because groups are present', () => {
+  it('keeps non-members outside a group box even when the flow passes through', () => {
+    // a>b>c with only a and c grouped: flat layout used to draw the group box
+    // straight over b, misstating membership.
+    const result = computeLayout(makeGraph({
+      nodes: [{ id: 'a' }, { id: 'b' }, { id: 'c' }],
+      edges: [
+        { from: 'a', to: 'b', op: '>' },
+        { from: 'b', to: 'c', op: '>' },
+      ],
+      groups: [{ id: 'g', members: ['a', 'c'] }],
+    }));
+
+    const b = result.nodes.find(node => node.id === 'b')!;
+    const group = result.groups[0];
+    const bInsideGroup = b.x + b.width > group.x
+      && b.x < group.x + group.width
+      && b.y + b.height > group.y
+      && b.y < group.y + group.height;
+    expect(bInsideGroup).toBe(false);
+
+    for (const id of ['a', 'c']) {
+      const member = result.nodes.find(node => node.id === id)!;
+      expect(member.x).toBeGreaterThanOrEqual(group.x);
+      expect(member.y).toBeGreaterThanOrEqual(group.y);
+      expect(member.x + member.width).toBeLessThanOrEqual(group.x + group.width);
+      expect(member.y + member.height).toBeLessThanOrEqual(group.y + group.height);
+    }
+  });
+
+  it('lays out sibling groups as disjoint clusters', () => {
     const baseGraph = makeGraph({
       direction: 'TB',
       nodes: [
@@ -140,7 +169,6 @@ describe('computeLayout', () => {
       ],
     });
 
-    const ungrouped = computeLayout(baseGraph);
     const grouped = computeLayout({
       ...baseGraph,
       groups: [
@@ -149,35 +177,163 @@ describe('computeLayout', () => {
       ],
     });
 
-    for (const nodeId of ['start', 'login', 'validate', 'mfa', 'verify', 'mfa_check', 'dashboard', 'retry']) {
-      const plain = ungrouped.nodes.find(node => node.id === nodeId)!;
-      const withGroups = grouped.nodes.find(node => node.id === nodeId)!;
-      expect(withGroups.x).toBe(plain.x);
-      expect(withGroups.y).toBe(plain.y);
+    const auth = grouped.groups.find(group => group.group.id === 'auth')!;
+    const outcomes = grouped.groups.find(group => group.group.id === 'outcomes')!;
+    const overlap = !(
+      auth.x + auth.width <= outcomes.x
+      || outcomes.x + outcomes.width <= auth.x
+      || auth.y + auth.height <= outcomes.y
+      || outcomes.y + outcomes.height <= auth.y
+    );
+    expect(overlap).toBe(false);
+
+    // Every member sits inside its own group's rectangle.
+    const membership: Array<[typeof auth, string[]]> = [
+      [auth, ['login', 'validate', 'mfa', 'verify', 'mfa_check']],
+      [outcomes, ['dashboard', 'retry', 'lockout']],
+    ];
+    for (const [group, members] of membership) {
+      for (const id of members) {
+        const member = grouped.nodes.find(node => node.id === id)!;
+        expect(member.x).toBeGreaterThanOrEqual(group.x);
+        expect(member.y).toBeGreaterThanOrEqual(group.y);
+        expect(member.x + member.width).toBeLessThanOrEqual(group.x + group.width);
+        expect(member.y + member.height).toBeLessThanOrEqual(group.y + group.height);
+      }
     }
   });
 
-  it('keeps wide terminal groups compact in the cli example', () => {
+  it('keeps adjacent group boxes close despite cluster border ranks', () => {
+    // Layered TB architecture: one group per rank. Compound layout inserts
+    // empty border ranks; the compression pass must squash them so stacked
+    // group boxes stay near each other instead of drifting apart.
+    const result = computeLayout(makeGraph({
+      direction: 'TB',
+      nodes: [
+        { id: 'ui' }, { id: 'api' }, { id: 'db' },
+      ],
+      edges: [
+        { from: 'ui', to: 'api', op: '>' },
+        { from: 'api', to: 'db', op: '>' },
+      ],
+      groups: [
+        { id: 'front', members: ['ui'] },
+        { id: 'back', members: ['api'] },
+        { id: 'data', members: ['db'] },
+      ],
+    }));
+
+    const front = result.groups.find(group => group.group.id === 'front')!;
+    const back = result.groups.find(group => group.group.id === 'back')!;
+    const data = result.groups.find(group => group.group.id === 'data')!;
+
+    const gap1 = back.y - (front.y + front.height);
+    const gap2 = data.y - (back.y + back.height);
+    expect(gap1).toBeGreaterThanOrEqual(0);
+    expect(gap2).toBeGreaterThanOrEqual(0);
+    expect(gap1).toBeLessThanOrEqual(48);
+    expect(gap2).toBeLessThanOrEqual(48);
+  });
+
+  it('keeps outside nodes clear of deeply nested group boxes', () => {
+    // Five nested levels: the gap between the outside node and the innermost
+    // members is crossed by four group tops. The compression budget must
+    // adapt or the outside node lands inside the outer boxes.
+    const result = computeLayout(makeGraph({
+      direction: 'TB',
+      nodes: [{ id: 'outside' }, { id: 'inner' }, { id: 'sidecar' }],
+      edges: [
+        { from: 'outside', to: 'inner', op: '>' },
+        { from: 'inner', to: 'sidecar', op: '--' },
+      ],
+      groups: [{
+        id: 'l1', members: [],
+        children: [{
+          id: 'l2', members: [],
+          children: [{
+            id: 'l3', members: [],
+            children: [{
+              id: 'l4', members: [],
+              children: [{ id: 'l5', members: ['inner', 'sidecar'] }],
+            }],
+          }],
+        }],
+      }],
+    }));
+
+    const outside = result.nodes.find(node => node.id === 'outside')!;
+    for (const layoutGroup of result.groups) {
+      const intrudes = outside.x + outside.width > layoutGroup.x
+        && outside.x < layoutGroup.x + layoutGroup.width
+        && outside.y + outside.height > layoutGroup.y
+        && outside.y < layoutGroup.y + layoutGroup.height;
+      expect(intrudes, `outside node inside group ${layoutGroup.group.id}`).toBe(false);
+    }
+  });
+
+  it('places empty top-level groups clear of the content', () => {
+    const result = computeLayout(makeGraph({
+      nodes: [{ id: 'a' }, { id: 'b' }],
+      edges: [{ from: 'a', to: 'b', op: '>' }],
+      groups: [
+        { id: 'solo', members: ['a'] },
+        { id: 'void', members: [] },
+      ],
+    }));
+
+    const voidGroup = result.groups.find(group => group.group.id === 'void')!;
+    for (const node of result.nodes) {
+      const overlap = !(
+        node.x + node.width <= voidGroup.x
+        || voidGroup.x + voidGroup.width <= node.x
+        || node.y + node.height <= voidGroup.y
+        || voidGroup.y + voidGroup.height <= node.y
+      );
+      expect(overlap, `node ${node.id} under empty group box`).toBe(false);
+    }
+    const solo = result.groups.find(group => group.group.id === 'solo')!;
+    const groupsOverlap = !(
+      solo.x + solo.width <= voidGroup.x
+      || voidGroup.x + voidGroup.width <= solo.x
+      || solo.y + solo.height <= voidGroup.y
+      || voidGroup.y + voidGroup.height <= solo.y
+    );
+    expect(groupsOverlap).toBe(false);
+  });
+
+  it('lays out the cli example with disjoint top-level groups', () => {
     const examplePath = resolve(process.cwd(), '../../spec/examples/cli.g');
     const source = readFileSync(examplePath, 'utf8');
     const { graph } = parse(source);
     const result = computeLayout(graph);
 
-    const convertGroup = result.groups.find(group => group.group.id === 'convert');
-    const renderingGroup = result.groups.find(group => group.group.id === 'rendering');
-    const mermaidText = result.nodes.find(node => node.id === 'mermaid_text');
-    const gText = result.nodes.find(node => node.id === 'g_text');
-    const svgOut = result.nodes.find(node => node.id === 'svg_out');
+    const topLevel = result.groups.filter(group => group.depth === 0);
+    expect(topLevel.length).toBeGreaterThan(1);
 
-    expect(convertGroup).toBeDefined();
-    expect(renderingGroup).toBeDefined();
-    expect(mermaidText).toBeDefined();
-    expect(gText).toBeDefined();
-    expect(svgOut).toBeDefined();
-    expect(convertGroup!.width).toBeLessThan(500);
-    expect(gText!.x - (mermaidText!.x + mermaidText!.width)).toBe(60);
-    expect(gText!.y).toBe(mermaidText!.y);
-    expect(convertGroup!.y).toBeGreaterThanOrEqual(renderingGroup!.y + renderingGroup!.height);
-    expect(gText!.y).toBeGreaterThan(svgOut!.y + svgOut!.height);
+    for (let i = 0; i < topLevel.length; i++) {
+      for (let j = i + 1; j < topLevel.length; j++) {
+        const a = topLevel[i];
+        const b = topLevel[j];
+        const overlap = !(
+          a.x + a.width <= b.x
+          || b.x + b.width <= a.x
+          || a.y + a.height <= b.y
+          || b.y + b.height <= a.y
+        );
+        expect(overlap, `groups ${a.group.id} and ${b.group.id} overlap`).toBe(false);
+      }
+    }
+
+    // Members stay inside their group rectangles.
+    for (const layoutGroup of result.groups) {
+      for (const id of layoutGroup.group.members) {
+        const member = result.nodes.find(node => node.id === id);
+        if (!member) continue;
+        expect(member.x).toBeGreaterThanOrEqual(layoutGroup.x);
+        expect(member.y).toBeGreaterThanOrEqual(layoutGroup.y);
+        expect(member.x + member.width).toBeLessThanOrEqual(layoutGroup.x + layoutGroup.width);
+        expect(member.y + member.height).toBeLessThanOrEqual(layoutGroup.y + layoutGroup.height);
+      }
+    }
   });
 });
