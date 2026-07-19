@@ -1,6 +1,15 @@
 # @glypho/parser
 
+<p>
+  <a href="https://www.npmjs.com/package/@glypho/parser"><img src="https://img.shields.io/npm/v/%40glypho%2Fparser?label=npm&color=0a5" alt="npm version"></a>
+  <a href="https://github.com/glypho-dev/glypho/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/glypho-dev/glypho/ci.yml?branch=main&label=CI" alt="CI status"></a>
+  <a href="https://www.npmjs.com/package/@glypho/parser"><img src="https://img.shields.io/npm/types/%40glypho%2Fparser" alt="TypeScript types"></a>
+  <a href="https://github.com/glypho-dev/glypho/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/%40glypho%2Fparser" alt="MIT license"></a>
+</p>
+
 Parse, convert, and serialize [Glypho](https://glypho.dev) (`.g`) graph notation — an LLM-optimized format for compact flowcharts and directed graphs.
+
+Errors are line-anchored with fix hints, so an LLM (or a human) can self-correct in a tight write → check → render loop. Silent corruption — unquoted multi-word labels, invalid hex colors, labels on chains — is always a loud error, never a wrong graph.
 
 ## Install
 

@@ -1,6 +1,15 @@
 # @glypho/renderer
 
+<p>
+  <a href="https://www.npmjs.com/package/@glypho/renderer"><img src="https://img.shields.io/npm/v/%40glypho%2Frenderer?label=npm&color=0a5" alt="npm version"></a>
+  <a href="https://github.com/glypho-dev/glypho/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/glypho-dev/glypho/ci.yml?branch=main&label=CI" alt="CI status"></a>
+  <a href="https://www.npmjs.com/package/@glypho/renderer"><img src="https://img.shields.io/npm/types/%40glypho%2Frenderer" alt="TypeScript types"></a>
+  <a href="https://github.com/glypho-dev/glypho/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/%40glypho%2Frenderer" alt="MIT license"></a>
+</p>
+
 Render [Glypho](https://glypho.dev) (`.g`) graphs to SVG — as a pure function or as a React component.
+
+<img src="https://raw.githubusercontent.com/glypho-dev/glypho/main/assets/readme-hero.svg" alt="A flowchart rendered by the Glypho renderer" width="100%">
 
 ## Install
 

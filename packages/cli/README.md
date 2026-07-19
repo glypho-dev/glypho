@@ -1,6 +1,14 @@
 # @glypho/cli
 
+<p>
+  <a href="https://www.npmjs.com/package/@glypho/cli"><img src="https://img.shields.io/npm/v/%40glypho%2Fcli?label=npm&color=0a5" alt="npm version"></a>
+  <a href="https://github.com/glypho-dev/glypho/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/glypho-dev/glypho/ci.yml?branch=main&label=CI" alt="CI status"></a>
+  <a href="https://github.com/glypho-dev/glypho/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/%40glypho%2Fcli" alt="MIT license"></a>
+</p>
+
 Command-line tool for [Glypho](https://glypho.dev) (`.g`) — validate, render, and convert graph diagrams.
+
+<img src="https://raw.githubusercontent.com/glypho-dev/glypho/main/assets/readme-hero.svg" alt="A flowchart rendered with glypho render" width="100%">
 
 ## Install
 
