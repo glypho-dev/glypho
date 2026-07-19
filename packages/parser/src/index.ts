@@ -31,6 +31,11 @@ export function flattenGroups(groups: Group[]): Group[] {
 }
 
 export function parse(input: string): ParseResult {
-  const tokens = new Lexer(input).tokenize();
-  return new Parser(tokens).parse();
+  const lexer = new Lexer(input);
+  const tokens = lexer.tokenize();
+  const result = new Parser(tokens).parse();
+  if (lexer.errors.length === 0) return result;
+  const errors = [...lexer.errors, ...result.errors]
+    .sort((a, b) => a.line - b.line || (a.column ?? 0) - (b.column ?? 0));
+  return { graph: result.graph, errors };
 }

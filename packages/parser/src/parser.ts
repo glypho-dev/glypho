@@ -27,6 +27,8 @@ export class Parser {
   private pos = 0;
   private errors: ParseError[] = [];
   private nodeMap = new Map<string, Node>();
+  /** Nodes explicitly defined by a node statement (not just referenced), id → first definition line */
+  private definedNodes = new Map<string, number>();
   private edges: Edge[] = [];
   private groups: Group[] = [];
   private positions: Position[] = [];
@@ -118,6 +120,25 @@ export class Parser {
     this.errors.push({ message, line: tok.line, column: tok.column });
   }
 
+  /**
+   * Require that the current statement is fully consumed (newline, EOF, or a
+   * trailing comment). Anything else would previously spill into the next
+   * statement and silently create spurious nodes.
+   */
+  private expectStatementEnd(label?: string): void {
+    if (this.isEndOfStatement() || this.check(TokenType.SLASH_SLASH)) return;
+    const tok = this.current();
+    if (label !== undefined && (tok.type === TokenType.ID || tok.type === TokenType.INTEGER)) {
+      this.addError(
+        `Unexpected '${tok.value}' after label '${label}' — multi-word labels must be quoted: "${label} ${tok.value}"`,
+        tok,
+      );
+    } else {
+      this.addError(`Unexpected '${tok.value || tok.type}' after end of statement`, tok);
+    }
+    throw new Error('parse error');
+  }
+
   private ensureNode(id: string, line: number): Node {
     let node = this.nodeMap.get(id);
     if (!node) {
@@ -150,18 +171,22 @@ export class Parser {
 
       case TokenType.GT:
         this.parseDirection();
+        this.expectStatementEnd();
         return;
 
       case TokenType.DOLLAR:
         this.parseStyleBlock();
+        this.expectStatementEnd();
         return;
 
       case TokenType.AT:
         this.groups.push(this.parseGroup());
+        this.expectStatementEnd();
         return;
 
       case TokenType.DOT:
         this.parseClassAssignment();
+        this.expectStatementEnd();
         return;
 
       case TokenType.ID:
@@ -213,13 +238,24 @@ export class Parser {
     }
 
     // Node definition: id [:shape] [label] [#color]
-    this.parseNodeDef(id, idTok.line);
+    this.parseNodeDef(idTok);
   }
 
   // ── Node ─────────────────────────────────────────────────────────────
 
-  private parseNodeDef(id: string, line: number): void {
-    const node = this.ensureNode(id, line);
+  private parseNodeDef(idTok: Token): void {
+    const id = idTok.value;
+    const node = this.ensureNode(id, idTok.line);
+
+    const firstDef = this.definedNodes.get(id);
+    if (firstDef !== undefined) {
+      this.addError(
+        `Duplicate definition of node '${id}' (first defined at line ${firstDef}) — later definitions override earlier ones`,
+        idTok,
+      );
+    } else {
+      this.definedNodes.set(id, idTok.line);
+    }
 
     // Optional shape
     if (this.check(TokenType.COLON)) {
@@ -240,6 +276,11 @@ export class Parser {
     // Optional color
     const color = this.tryParseColor();
     if (color !== undefined) node.color = color;
+
+    // A bare-word label followed by more tokens is the most common authoring
+    // mistake (`login:r User Login`) — reject it with a hint instead of
+    // spilling into a spurious statement
+    this.expectStatementEnd(label);
   }
 
   // ── Edge / Chain ─────────────────────────────────────────────────────
@@ -269,6 +310,8 @@ export class Parser {
     if (label !== undefined) edge.label = label;
     if (color !== undefined) edge.color = color;
     this.edges.push(edge);
+
+    this.expectStatementEnd(label);
   }
 
   private parseChainContinuation(prevId: string, line: number): void {
@@ -279,6 +322,21 @@ export class Parser {
       this.ensureNode(toTok.value, toTok.line);
       this.edges.push({ from: prevId, to: toTok.value, op, line });
       prevId = toTok.value;
+    }
+
+    if (!this.isEndOfStatement() && !this.check(TokenType.SLASH_SLASH)) {
+      const tok = this.current();
+      if (tok.type === TokenType.ID || tok.type === TokenType.INTEGER
+        || tok.type === TokenType.QUOTED_STRING || tok.type === TokenType.MULTILINE_STRING) {
+        const last = this.edges[this.edges.length - 1];
+        this.addError(
+          `Chains cannot have labels — use a separate edge line: ${last.from}${last.op}${last.to} "${tok.value}"`,
+          tok,
+        );
+      } else {
+        this.addError(`Unexpected '${tok.value || tok.type}' after chain`, tok);
+      }
+      throw new Error('parse error');
     }
   }
 
@@ -301,6 +359,11 @@ export class Parser {
     while (!this.check(TokenType.RBRACE) && !this.isAtEnd()) {
       this.skipNewlines();
       if (this.check(TokenType.RBRACE) || this.isAtEnd()) break;
+      if (this.check(TokenType.SLASH_SLASH)) {
+        // End-of-line comment inside a multiline group body
+        this.advance();
+        continue;
+      }
       if (this.check(TokenType.AT)) {
         children.push(this.parseGroup());
       } else {
@@ -338,15 +401,13 @@ export class Parser {
   private parsePosition(id: string, line: number): void {
     this.advance(); // consume @
 
-    const negative_x = this.tryParseNegativeSign();
     const xTok = this.expect(TokenType.INTEGER);
-    const x = (negative_x ? -1 : 1) * parseInt(xTok.value, 10);
+    const x = parseInt(xTok.value, 10);
 
     this.expect(TokenType.COMMA);
 
-    const negative_y = this.tryParseNegativeSign();
     const yTok = this.expect(TokenType.INTEGER);
-    const y = (negative_y ? -1 : 1) * parseInt(yTok.value, 10);
+    const y = parseInt(yTok.value, 10);
 
     const pos: Position = { id, x, y, line };
 
@@ -371,12 +432,7 @@ export class Parser {
     }
 
     this.positions.push(pos);
-  }
-
-  private tryParseNegativeSign(): boolean {
-    // Negative coordinates are not yet supported (spec §Edge Cases).
-    // The lexer doesn't emit a single DASH token, so there's nothing to consume here.
-    return false;
+    this.expectStatementEnd();
   }
 
   // ── Style ────────────────────────────────────────────────────────────
@@ -488,11 +544,21 @@ export class Parser {
     if (this.isEndOfStatement()) return undefined;
 
     if (this.check(TokenType.HASH)) {
-      this.advance();
+      const hashTok = this.advance();
       if (this.check(TokenType.HEX_COLOR)) {
         const tok = this.advance();
         return '#' + tok.value;
       }
+      // `#` not followed by a valid color (e.g. #abcd, #12345) — previously the
+      // stray tokens spilled into the next statement as spurious nodes
+      const next = this.current();
+      const shown = next.type === TokenType.ID || next.type === TokenType.INTEGER
+        ? `#${next.value}` : '#';
+      this.addError(
+        `Invalid hex color '${shown}' — use 3 or 6 hex digits (e.g. #f00 or #ff0000)`,
+        hashTok,
+      );
+      throw new Error('parse error');
     }
 
     return undefined;
