@@ -203,6 +203,38 @@ describe('computeLayout', () => {
     }
   });
 
+  it('keeps adjacent group boxes close despite cluster border ranks', () => {
+    // Layered TB architecture: one group per rank. Compound layout inserts
+    // empty border ranks; the compression pass must squash them so stacked
+    // group boxes stay near each other instead of drifting apart.
+    const result = computeLayout(makeGraph({
+      direction: 'TB',
+      nodes: [
+        { id: 'ui' }, { id: 'api' }, { id: 'db' },
+      ],
+      edges: [
+        { from: 'ui', to: 'api', op: '>' },
+        { from: 'api', to: 'db', op: '>' },
+      ],
+      groups: [
+        { id: 'front', members: ['ui'] },
+        { id: 'back', members: ['api'] },
+        { id: 'data', members: ['db'] },
+      ],
+    }));
+
+    const front = result.groups.find(group => group.group.id === 'front')!;
+    const back = result.groups.find(group => group.group.id === 'back')!;
+    const data = result.groups.find(group => group.group.id === 'data')!;
+
+    const gap1 = back.y - (front.y + front.height);
+    const gap2 = data.y - (back.y + back.height);
+    expect(gap1).toBeGreaterThanOrEqual(0);
+    expect(gap2).toBeGreaterThanOrEqual(0);
+    expect(gap1).toBeLessThanOrEqual(48);
+    expect(gap2).toBeLessThanOrEqual(48);
+  });
+
   it('lays out the cli example with disjoint top-level groups', () => {
     const examplePath = resolve(process.cwd(), '../../spec/examples/cli.g');
     const source = readFileSync(examplePath, 'utf8');

@@ -8,6 +8,11 @@ const DEFAULT_NODE_SEP = 60;
 const DEFAULT_RANK_SEP = 80;
 const GROUP_PADDING = 24;
 const GROUP_LABEL_HEIGHT = 24;
+// Compound layout inserts empty border ranks around every cluster, which
+// reads as dead space. Gaps between occupied rank bands are compressed to
+// this budget: enough for two group borders (2 × padding + label = 72) plus
+// daylight, close to the flat layout's ranksep.
+const MAX_RANK_GAP = 104;
 const EMPTY_GROUP_MIN_WIDTH = 96;
 const EMPTY_GROUP_MIN_HEIGHT = GROUP_LABEL_HEIGHT + GROUP_PADDING * 2;
 
@@ -212,6 +217,56 @@ function computeGroupLayouts(
 
   layoutGroups.sort((a, b) => a.depth - b.depth);
   return layoutGroups;
+}
+
+/**
+ * Build a monotone remap of coordinates along one axis that shrinks every
+ * empty gap between occupied bands down to `maxGap`. Coordinates inside
+ * occupied bands translate rigidly; coordinates inside a compressed gap
+ * (e.g. long-edge control points) scale linearly within it.
+ */
+function buildAxisCompressionMap(
+  intervals: Array<[number, number]>,
+  maxGap: number,
+): (value: number) => number {
+  if (intervals.length === 0) return value => value;
+
+  const sorted = [...intervals].sort((a, b) => a[0] - b[0]);
+  const merged: Array<[number, number]> = [[sorted[0][0], sorted[0][1]]];
+  for (let i = 1; i < sorted.length; i++) {
+    const [start, end] = sorted[i];
+    const last = merged[merged.length - 1];
+    if (start <= last[1]) last[1] = Math.max(last[1], end);
+    else merged.push([start, end]);
+  }
+
+  // Anchor points (old coordinate → new coordinate) at every band edge.
+  const anchors: Array<[number, number]> = [];
+  let offset = 0;
+  for (let i = 0; i < merged.length; i++) {
+    if (i > 0) {
+      const gap = merged[i][0] - merged[i - 1][1];
+      offset += Math.max(0, gap - maxGap);
+    }
+    anchors.push([merged[i][0], merged[i][0] - offset]);
+    anchors.push([merged[i][1], merged[i][1] - offset]);
+  }
+
+  return (value: number): number => {
+    if (value <= anchors[0][0]) return value;
+    const last = anchors[anchors.length - 1];
+    if (value >= last[0]) return value - (last[0] - last[1]);
+    for (let i = 1; i < anchors.length; i++) {
+      if (value <= anchors[i][0]) {
+        const [oldA, newA] = anchors[i - 1];
+        const [oldB, newB] = anchors[i];
+        if (oldB === oldA) return newB;
+        const t = (value - oldA) / (oldB - oldA);
+        return newA + t * (newB - newA);
+      }
+    }
+    return value;
+  };
 }
 
 function rectsOverlap(
@@ -473,6 +528,26 @@ export function computeLayout(graph: Graph): LayoutResult {
     nodeMap.set(node.id, layoutNode);
   }
 
+  // Squash the dead space introduced by cluster border ranks. The remap is
+  // shared by nodes, edge control points, and cluster rectangles so the
+  // geometry stays consistent.
+  const direction = graph.direction ?? 'TB';
+  const isHorizontal = direction === 'LR' || direction === 'RL';
+  let mapRankAxis: (value: number) => number = value => value;
+  if (clusterKeys.size > 0) {
+    const intervals = layoutNodes
+      .filter(node => !explicitPositionIds.has(node.id))
+      .map(node => (
+        isHorizontal ? [node.x, node.x + node.width] : [node.y, node.y + node.height]
+      ) as [number, number]);
+    mapRankAxis = buildAxisCompressionMap(intervals, MAX_RANK_GAP);
+    for (const node of layoutNodes) {
+      if (explicitPositionIds.has(node.id)) continue;
+      if (isHorizontal) node.x = mapRankAxis(node.x);
+      else node.y = mapRankAxis(node.y);
+    }
+  }
+
   const compactedNodeIds = compactTerminalGroupMembers(graph, nodeMap, explicitPositionIds);
 
   // Extract edge points.
@@ -499,8 +574,8 @@ export function computeLayout(graph: Graph): LayoutResult {
       && !compactedNodeIds.has(edge.to)
     ) {
       points = (dagreEdge.points as Array<{ x: number; y: number }>).map(p => ({
-        x: p.x,
-        y: p.y,
+        x: isHorizontal ? mapRankAxis(p.x) : p.x,
+        y: isHorizontal ? p.y : mapRankAxis(p.y),
       }));
     } else {
       points = [{ ...fromCenter }, { ...toCenter }];
@@ -527,12 +602,18 @@ export function computeLayout(graph: Graph): LayoutResult {
     if (!clusterNode || !Number.isFinite(clusterNode.x) || !Number.isFinite(clusterNode.y)) continue;
     const width = (clusterNode.width as number) ?? 0;
     const height = (clusterNode.height as number) ?? 0;
-    clusterRects.set(group, {
-      x: (clusterNode.x as number) - width / 2,
-      y: (clusterNode.y as number) - height / 2,
-      width,
-      height,
-    });
+    let x1 = (clusterNode.x as number) - width / 2;
+    let y1 = (clusterNode.y as number) - height / 2;
+    let x2 = x1 + width;
+    let y2 = y1 + height;
+    if (isHorizontal) {
+      x1 = mapRankAxis(x1);
+      x2 = mapRankAxis(x2);
+    } else {
+      y1 = mapRankAxis(y1);
+      y2 = mapRankAxis(y2);
+    }
+    clusterRects.set(group, { x: x1, y: y1, width: x2 - x1, height: y2 - y1 });
   }
   const layoutGroups = computeGroupLayouts(graph.groups, nodeMap, clusterRects);
 
