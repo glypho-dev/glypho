@@ -279,6 +279,18 @@ describe('render', () => {
     expect(stderr).toContain('<stdin>:1:2:');
   });
 
+  it('exits non-zero for unknown --format values', () => {
+    const outPath = '/tmp/glypho-test-bad-format.pdf';
+    cleanup.push(outPath);
+    const { stderr, status } = runWithStderr(
+      `render ${join(EXAMPLES, 'minimal.g')} -f pdf -o ${outPath}`,
+    );
+    expect(status).toBe(1);
+    expect(stderr).toContain("invalid --format 'pdf'");
+    expect(stderr).toContain('svg, png');
+    expect(existsSync(outPath)).toBe(false);
+  });
+
   it('SVG output has no background rect by default', () => {
     const outPath = '/tmp/glypho-test-no-bg.svg';
     cleanup.push(outPath);

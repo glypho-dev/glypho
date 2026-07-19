@@ -42,6 +42,12 @@ Examples:
     scale?: number;
     background?: string;
   }) => {
+    if (opts.format !== 'svg' && opts.format !== 'png') {
+      console.error(`error: invalid --format '${opts.format}' (valid values: svg, png)`);
+      process.exitCode = 1;
+      return;
+    }
+
     const { file: inputFile, name, graph, errors } = loadGraph(file);
 
     if (errors.length > 0) {
