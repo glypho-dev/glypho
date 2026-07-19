@@ -1,6 +1,6 @@
 {
   "name": "@glypho/renderer",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "React SVG renderer with dagre auto-layout for .g graph notation",
   "license": "MIT",
   "author": "glypho-dev",
@@ -34,7 +34,7 @@
   },
   "dependencies": {
     "@dagrejs/dagre": "^1.1.4",
-    "@glypho/parser": "0.1.4"
+    "@glypho/parser": "0.2.0"
   },
   "peerDependencies": {
     "react": "^18 || ^19"
