@@ -5,7 +5,7 @@
 idea:c Idea #f90
 plan:r Plan
 build:r Build
-test:d Ready?
+test:d "Ready?"
 ship:p Ship #0af
 
 @work{plan build test}
