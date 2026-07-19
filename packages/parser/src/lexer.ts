@@ -1,3 +1,5 @@
+import type { ParseError } from './types.js';
+
 export enum TokenType {
   // Operators / structural
   GT = 'GT',               // >
@@ -57,6 +59,7 @@ export class Lexer {
   private line = 1;
   private column = 1;
   private tokens: Token[] = [];
+  readonly errors: ParseError[] = [];
 
   constructor(input: string) {
     this.input = input;
@@ -142,8 +145,7 @@ export class Lexer {
         continue;
       }
 
-      // Skip unexpected characters
-      this.advance();
+      this.readUnexpected();
     }
 
     this.emit(TokenType.EOF, '');
@@ -307,6 +309,39 @@ export class Lexer {
       this.column++;
     }
     this.tokens.push({ type: TokenType.INTEGER, value, line: this.line, column: startCol });
+  }
+
+  private readUnexpected(): void {
+    const line = this.line;
+    const column = this.column;
+    const ch = this.input[this.pos];
+
+    if (ch === '-') {
+      this.errors.push({
+        message: `Unexpected character '-' — negative coordinates are not supported`,
+        line, column,
+      });
+      this.advance();
+      return;
+    }
+
+    if (ch.charCodeAt(0) > 127) {
+      // Collect the run of non-ASCII characters so unquoted CJK/emoji text
+      // produces one error, not one per character
+      let run = '';
+      while (this.pos < this.input.length && this.input[this.pos].charCodeAt(0) > 127) {
+        run += this.input[this.pos];
+        this.advance();
+      }
+      this.errors.push({
+        message: `Unquoted non-ASCII text '${run}' — wrap it in quotes: "${run}"`,
+        line, column,
+      });
+      return;
+    }
+
+    this.errors.push({ message: `Unexpected character '${ch}'`, line, column });
+    this.advance();
   }
 
   private readId(): void {

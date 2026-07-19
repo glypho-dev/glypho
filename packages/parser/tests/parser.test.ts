@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Lexer } from '../src/lexer.js';
 import { Parser } from '../src/parser.js';
+import { parse as parseFull } from '../src/index.js';
 import type { ParseResult } from '../src/types.js';
 
 function parse(input: string): ParseResult {
@@ -392,6 +393,112 @@ describe('Parser', () => {
       const { graph, errors } = parse('>INVALID\na>b');
       expect(errors.length).toBeGreaterThan(0);
       expect(graph.edges).toHaveLength(1);
+    });
+  });
+
+  // ── Strictness (silent corruption → loud errors) ─────────────────────
+
+  describe('strict parsing errors', () => {
+    it('rejects multi-word bare node labels with a quote hint', () => {
+      const { graph, errors } = parseFull('login:r User Login');
+      expect(errors).toHaveLength(1);
+      expect(errors[0].message).toContain('multi-word labels must be quoted');
+      expect(errors[0].message).toContain('"User Login"');
+      expect(errors[0].line).toBe(1);
+      expect(graph.nodes.map(n => n.id)).not.toContain('Login');
+    });
+
+    it('rejects trailing tokens after edge labels', () => {
+      const { graph, errors } = parseFull('a>b some label');
+      expect(errors).toHaveLength(1);
+      expect(errors[0].message).toContain('multi-word labels must be quoted');
+      expect(graph.nodes.map(n => n.id)).not.toContain('label');
+    });
+
+    it('rejects labels on chains', () => {
+      const { graph, errors } = parseFull('a>b>c label');
+      expect(errors).toHaveLength(1);
+      expect(errors[0].message).toContain('Chains cannot have labels');
+      expect(errors[0].message).toContain('b>c "label"');
+      expect(graph.nodes.map(n => n.id)).not.toContain('label');
+      expect(graph.edges).toHaveLength(2);
+    });
+
+    it('rejects unquoted non-ASCII text with a quote hint', () => {
+      const { errors } = parseFull('a 日本語');
+      expect(errors).toHaveLength(1);
+      expect(errors[0].message).toContain('日本語');
+      expect(errors[0].message).toContain('quotes');
+      expect(errors[0].line).toBe(1);
+    });
+
+    it('accepts quoted non-ASCII labels', () => {
+      const { graph, errors } = parseFull('a "日本語"');
+      expect(errors).toHaveLength(0);
+      expect(graph.nodes[0].label).toBe('日本語');
+    });
+
+    it('rejects 4-digit hex colors without creating spurious nodes', () => {
+      const { graph, errors } = parseFull('a #abcd');
+      expect(errors).toHaveLength(1);
+      expect(errors[0].message).toContain('Invalid hex color');
+      expect(errors[0].message).toContain('3 or 6 hex digits');
+      expect(graph.nodes.map(n => n.id)).not.toContain('abcd');
+    });
+
+    it('rejects 5-digit hex colors', () => {
+      const { errors } = parseFull('a Task #12345');
+      expect(errors).toHaveLength(1);
+      expect(errors[0].message).toContain('Invalid hex color');
+    });
+
+    it('accepts end-of-line comments inside multiline group bodies', () => {
+      const { graph, errors } = parseFull('@g{\n  a // member comment\n  b\n}');
+      expect(errors).toHaveLength(0);
+      expect(graph.groups).toHaveLength(1);
+      expect(graph.groups[0].members).toEqual(['a', 'b']);
+    });
+
+    it('accepts end-of-line comments after single-line statements', () => {
+      const { graph, errors } = parseFull('a:r Start // trailing\na>b // edge comment');
+      expect(errors).toHaveLength(0);
+      expect(graph.nodes.map(n => n.id)).toEqual(['a', 'b']);
+    });
+
+    it('rejects negative coordinates', () => {
+      const { errors } = parseFull('a@-5,30');
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors[0].message).toContain('negative coordinates are not supported');
+    });
+
+    it('reports duplicate node definitions', () => {
+      const { errors } = parseFull('a:r "One"\na:r "Two"');
+      expect(errors).toHaveLength(1);
+      expect(errors[0].message).toContain(`Duplicate definition of node 'a'`);
+      expect(errors[0].message).toContain('line 1');
+      expect(errors[0].line).toBe(2);
+    });
+
+    it('allows an edge reference before the node definition', () => {
+      const { errors } = parseFull('a>b\na:r "Label"');
+      expect(errors).toHaveLength(0);
+    });
+
+    it('rejects trailing junk after position statements', () => {
+      const { graph, errors } = parseFull('a@100,200 junk');
+      expect(errors).toHaveLength(1);
+      expect(graph.nodes.map(n => n.id)).not.toContain('junk');
+    });
+
+    it('rejects trailing junk after group statements', () => {
+      const { graph, errors } = parseFull('@g{a b} junk');
+      expect(errors).toHaveLength(1);
+      expect(graph.nodes.map(n => n.id)).not.toContain('junk');
+    });
+
+    it('rejects trailing junk after direction', () => {
+      const { errors } = parseFull('>LR junk');
+      expect(errors).toHaveLength(1);
     });
   });
 });

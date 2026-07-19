@@ -35,7 +35,7 @@ lay<>sty
 // SEMANTIC LAYER — the core of every graph
 // ══════════════════════════════════════════════════
 
-dir:d Direction?
+dir:d "Direction?"
 nodes:r Nodes
 edges:r Edges
 groups:r Groups

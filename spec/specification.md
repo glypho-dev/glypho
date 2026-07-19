@@ -157,11 +157,13 @@ Third line"""
 - May contain letters, digits, underscores, and hyphens
 - Examples: `login`, `myNode`, `step_1`, `my-node`
 - Invalid: `1step` (starts with number), `_private` (starts with underscore)
+- Defining the same node ID twice is a parse error (edges may reference an ID before its definition)
 
 #### Labels
 
 - **Single word**: No quotes needed (`Login`)
-- **Multiple words**: Use quotes (`"User Login"`)
+- **Multiple words**: Use quotes (`"User Login"`) — a multi-word bare label is a parse error
+- **Non-ASCII text** (CJK, emoji, accents): Use quotes (`"日本語"`) — unquoted non-ASCII is a parse error
 - **Numeric labels**: Valid without quotes (`42`)
 - **Special characters**: Use quotes (`"Error: 404"`)
 - **Multiline**: Use triple quotes with real line breaks, or `\n` escapes inside regular quotes
@@ -302,7 +304,7 @@ login@100,200
 
 - Coordinates are integers only (no decimals)
 - Origin (0,0) is typically top-left
-- Negative coordinates are not yet supported
+- Negative coordinates are not yet supported (using one is a parse error)
 
 #### Size
 

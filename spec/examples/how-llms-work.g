@@ -24,7 +24,7 @@ norm1:r LayerNorm #8df
 ffn:r """Feed-Forward
 Network""" #48f
 norm2:r LayerNorm #8df
-residual:c + #aef
+residual:c "+" #aef
 
 // ── REPEAT ───────────────────────────────────────
 repeat:h """×96 Layers
