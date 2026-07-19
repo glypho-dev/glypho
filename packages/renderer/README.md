@@ -123,7 +123,7 @@ interface RenderSvgOptions {
 
 1. **Layout** — dagre auto-positions nodes, routes edges, sizes groups
 2. **Shapes** — 6 shapes rendered as SVG primitives (rect, polygon, circle, ellipse, path)
-3. **Styles** — CSS-like cascade: shape defaults → `$:shape` rules → `$#id` rules → inline color
+3. **Styles** — CSS-like cascade: shape defaults → `$:shape` rules → `$.class` rules → `$#id` rules → inline color
 4. **Output** — self-contained `<svg>` with no external dependencies
 
 Text sizing uses a character-width heuristic (no DOM/`getBBox` needed), so rendering works anywhere — Node.js, Deno, edge functions, CI pipelines — without a browser.
