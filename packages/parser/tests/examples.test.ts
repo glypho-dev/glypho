@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync } from 'fs';
 import { resolve } from 'path';
 import { parse } from '../src/index.js';
 
@@ -11,6 +11,16 @@ function parseFile(name: string) {
 }
 
 describe('example files', () => {
+  // Catch-all so newly added examples can't slip past the suite unparsed
+  describe('every spec example parses with zero errors', () => {
+    for (const name of readdirSync(EXAMPLES_DIR).filter(f => f.endsWith('.g')).sort()) {
+      it(name, () => {
+        const { errors } = parseFile(name);
+        expect(errors).toEqual([]);
+      });
+    }
+  });
+
   it('parses minimal.g with zero errors', () => {
     const { graph, errors } = parseFile('minimal.g');
     expect(errors).toEqual([]);

@@ -4,7 +4,7 @@
 
 push:c Push #0af
 build:r Build
-test:d Pass?
+test:d "Pass?"
 deploy:r Deploy #0a0
 fix:r Fix #f44
 
