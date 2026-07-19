@@ -164,7 +164,7 @@ Third line"""
 - **Multiple words**: Use quotes (`"User Login"`)
 - **Numeric labels**: Valid without quotes (`42`)
 - **Special characters**: Use quotes (`"Error: 404"`)
-- **Multiline**: Use triple quotes or escape sequences
+- **Multiline**: Use triple quotes with real line breaks, or `\n` escapes inside regular quotes
 
 #### Colors
 
@@ -330,7 +330,13 @@ Apply CSS-like styles to shapes and classes.
 
 #### Properties
 
-Standard CSS properties are supported:
+The renderer applies exactly three properties:
+
+| Property | Value |
+|----------|-------|
+| `fill` | Hex color (`#f00` or `#ff0000`) |
+| `stroke` | Hex color (`#f00` or `#ff0000`) |
+| `stroke-width` | Number (pixels) |
 
 ```g
 $:r{fill:#fff stroke:#333 stroke-width:2}
@@ -338,11 +344,7 @@ $:d{fill:#ffa}
 $.highlight{fill:#ff0 stroke:#f00}
 ```
 
-For property values with spaces, use quotes:
-
-```g
-$:r{font-family:"Helvetica Neue"}
-```
+Colors must be hex — named colors (e.g. `fill:red`) are not valid and fall back to a gray default. Other properties (e.g. `font-family`) parse without error but have no effect on rendered output. For property values with spaces, use quotes: `$:r{data-note:"two words"}`.
 
 ### Comments
 
@@ -385,6 +387,8 @@ desc:r "Line one\nLine two\nLine three"
 | `\t`   | Tab       |
 | `\\`   | Backslash |
 | `\"`   | Quote     |
+
+Escape sequences are processed only inside regular (single `"`) quotes. Triple-quoted content is taken literally: a `\n` inside `"""..."""` stays as backslash-n; use real line breaks instead.
 
 ---
 

@@ -51,9 +51,14 @@ a:r "Start" #0af         // with color
 **Labels:**
 - Single word, no quotes needed: `a:r Start`
 - Multiple words need double quotes: `a:r "User Login"`
-- Multiline with `\n`: `a:r "Line one\nLine two"`
-- Multiline with triple quotes: `a:r """Line one\nLine two\nLine three"""`
-- Escape sequences: `\n` `\t` `\\` `\"`
+- Multiline with `\n` inside regular quotes: `a:r "Line one\nLine two"`
+- Multiline with triple quotes — use real line breaks, not `\n`:
+  ```
+  a:r """Line one
+  Line two
+  Line three"""
+  ```
+- Escape sequences (`\n` `\t` `\\` `\"`) work only inside regular quotes; triple-quoted content is taken literally (a `\n` there renders as backslash-n)
 - Bare numbers are valid: `a:r 42`
 
 **Colors** are hex only (`#f00` or `#ff0000`). Named colors like `red` are not supported.
@@ -136,7 +141,7 @@ Three selector types:
 | `.class` | nodes in that class | `$.critical { fill:#fee stroke:#c00 }` |
 | `#id` | specific node | `$#login { fill:#0af }` |
 
-Properties are **space-separated** (not semicolons). Standard CSS properties: `fill`, `stroke`, `stroke-width`, `font-family`, `font-weight`, etc. Quote values with spaces: `font-family:"Helvetica Neue"`.
+Properties are **space-separated** (not semicolons). The renderer applies exactly three properties: `fill`, `stroke` (hex colors only — `#f00` or `#ff0000`; named colors like `red` are ignored), and `stroke-width` (a number). Any other property parses without error but has no effect on output.
 
 ### Positioning
 
