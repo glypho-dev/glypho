@@ -61,7 +61,8 @@ Monorepo uses npm workspaces.
 
 **CLI** (`@glypho/cli` → `glypho` command):
 - Subcommands: `check`, `parse`, `info`, `render`, `preview`, `to mermaid`, `from mermaid|dot`
-- All commands accept `-` for stdin or read from stdin when piped
+- All commands except `preview` accept `-` for stdin or read from stdin when piped (`preview` requires an existing `.svg` file)
+- `render` always writes a file (output path derived from input name unless `-o` given) — it never prints SVG to stdout
 - See `glypho --help` or README for full CLI reference
 
 ## Format Quick Reference

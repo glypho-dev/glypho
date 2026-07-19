@@ -272,8 +272,8 @@ glypho check flow.g --json        # machine-readable validation
 glypho parse flow.g               # print JSON AST
 glypho parse flow.g --compact     # minified JSON AST
 glypho info flow.g                # stats + token comparison across formats
-glypho render flow.g              # render to SVG (stdout)
-glypho render flow.g -o out.svg   # render to SVG file
+glypho render flow.g              # render to SVG (writes flow.svg)
+glypho render flow.g -o out.svg   # render to a specific path
 glypho render flow.g -f png       # render to PNG
 glypho render flow.g -f png --scale 2  # render @2x PNG
 glypho render flow.g -b white     # render with background color
@@ -285,7 +285,7 @@ glypho from mermaid flow.mmd      # convert Mermaid to .g
 glypho from dot graph.dot         # convert Graphviz DOT to .g
 ```
 
-All commands accept `-` for stdin or read from stdin when input is piped. See the [CLI README](packages/cli/README.md) for full details.
+All commands except `preview` accept `-` for stdin or read from stdin when input is piped (`preview` requires an existing `.svg` file). See the [CLI README](packages/cli/README.md) for full details.
 
 ---
 
