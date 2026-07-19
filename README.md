@@ -285,6 +285,8 @@ glypho from mermaid flow.mmd      # convert Mermaid to .g
 glypho from dot graph.dot         # convert Graphviz DOT to .g
 ```
 
+PNG export supports CJK and other non-Latin scripts. Emoji are a known limitation: the rasterizer (resvg) has no color-font support, and an emoji in a label currently breaks that label's whole text run in the PNG output. Use SVG output when labels contain emoji.
+
 All commands except `preview` accept `-` for stdin or read from stdin when input is piped (`preview` requires an existing `.svg` file). See the [CLI README](packages/cli/README.md) for full details.
 
 ---

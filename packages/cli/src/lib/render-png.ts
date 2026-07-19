@@ -44,6 +44,14 @@ export function renderPng(svg: string, options: RenderPngOptions = {}): Buffer {
   const resvg = new Resvg(svg, {
     fitTo: { mode: 'zoom' as const, value: scale },
     background: options.background,
+    // The SVG uses font-family="system-ui, sans-serif". System fonts must be
+    // loaded so resvg can resolve the generic sans-serif family and fall back
+    // per-glyph for scripts it doesn't cover (e.g. CJK). Known limitation:
+    // emoji render as tofu — resvg has no color-font (sbix/COLR) support, and
+    // a single emoji currently breaks the whole text run in resvg 2.6.
+    font: {
+      loadSystemFonts: true,
+    },
   });
   const rendered = resvg.render();
   return rendered.asPng();
