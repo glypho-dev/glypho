@@ -11,7 +11,7 @@ Glypho is the most token-efficient text-to-diagram format. A `.g` file describes
 
 ### Direction
 
-Sets auto-layout flow. Must be the first non-comment line if present.
+Sets auto-layout flow. Declare it at most once — a duplicate direction is a parse error. By convention it goes on the first line, though the parser accepts it anywhere.
 
 ```
 >LR
