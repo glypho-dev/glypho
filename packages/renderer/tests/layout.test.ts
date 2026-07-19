@@ -235,6 +235,72 @@ describe('computeLayout', () => {
     expect(gap2).toBeLessThanOrEqual(48);
   });
 
+  it('keeps outside nodes clear of deeply nested group boxes', () => {
+    // Five nested levels: the gap between the outside node and the innermost
+    // members is crossed by four group tops. The compression budget must
+    // adapt or the outside node lands inside the outer boxes.
+    const result = computeLayout(makeGraph({
+      direction: 'TB',
+      nodes: [{ id: 'outside' }, { id: 'inner' }, { id: 'sidecar' }],
+      edges: [
+        { from: 'outside', to: 'inner', op: '>' },
+        { from: 'inner', to: 'sidecar', op: '--' },
+      ],
+      groups: [{
+        id: 'l1', members: [],
+        children: [{
+          id: 'l2', members: [],
+          children: [{
+            id: 'l3', members: [],
+            children: [{
+              id: 'l4', members: [],
+              children: [{ id: 'l5', members: ['inner', 'sidecar'] }],
+            }],
+          }],
+        }],
+      }],
+    }));
+
+    const outside = result.nodes.find(node => node.id === 'outside')!;
+    for (const layoutGroup of result.groups) {
+      const intrudes = outside.x + outside.width > layoutGroup.x
+        && outside.x < layoutGroup.x + layoutGroup.width
+        && outside.y + outside.height > layoutGroup.y
+        && outside.y < layoutGroup.y + layoutGroup.height;
+      expect(intrudes, `outside node inside group ${layoutGroup.group.id}`).toBe(false);
+    }
+  });
+
+  it('places empty top-level groups clear of the content', () => {
+    const result = computeLayout(makeGraph({
+      nodes: [{ id: 'a' }, { id: 'b' }],
+      edges: [{ from: 'a', to: 'b', op: '>' }],
+      groups: [
+        { id: 'solo', members: ['a'] },
+        { id: 'void', members: [] },
+      ],
+    }));
+
+    const voidGroup = result.groups.find(group => group.group.id === 'void')!;
+    for (const node of result.nodes) {
+      const overlap = !(
+        node.x + node.width <= voidGroup.x
+        || voidGroup.x + voidGroup.width <= node.x
+        || node.y + node.height <= voidGroup.y
+        || voidGroup.y + voidGroup.height <= node.y
+      );
+      expect(overlap, `node ${node.id} under empty group box`).toBe(false);
+    }
+    const solo = result.groups.find(group => group.group.id === 'solo')!;
+    const groupsOverlap = !(
+      solo.x + solo.width <= voidGroup.x
+      || voidGroup.x + voidGroup.width <= solo.x
+      || solo.y + solo.height <= voidGroup.y
+      || voidGroup.y + voidGroup.height <= solo.y
+    );
+    expect(groupsOverlap).toBe(false);
+  });
+
   it('lays out the cli example with disjoint top-level groups', () => {
     const examplePath = resolve(process.cwd(), '../../spec/examples/cli.g');
     const source = readFileSync(examplePath, 'utf8');

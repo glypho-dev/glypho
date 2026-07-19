@@ -155,6 +155,7 @@ function computeGroupLayouts(
   clusterRects: ReadonlyMap<Group, Rect>,
 ): LayoutGroup[] {
   const layoutGroups: LayoutGroup[] = [];
+  const emptyGroups: number[] = [];
 
   function visitGroup(group: Group, depth: number): LayoutGroup {
     const childLayouts = (group.children ?? []).map(child => visitGroup(child, depth + 1));
@@ -202,8 +203,11 @@ function computeGroupLayouts(
       const { width: labelWidth } = measureText(label);
       width = Math.max(EMPTY_GROUP_MIN_WIDTH, labelWidth + GROUP_PADDING * 2);
       height = EMPTY_GROUP_MIN_HEIGHT;
+      // Placed after the main pass, below the occupied content — a (0,0)
+      // default would sit on top of whatever the layout put there.
       x = 0;
       y = 0;
+      emptyGroups.push(layoutGroups.length);
     }
 
     const layoutGroup: LayoutGroup = { group, x, y, width, height, depth };
@@ -215,19 +219,39 @@ function computeGroupLayouts(
     visitGroup(group, 0);
   }
 
+  // Stack empty top-level groups below everything else.
+  if (emptyGroups.length > 0) {
+    const occupied = [
+      ...Array.from(nodeMap.values()),
+      ...layoutGroups.filter((_, index) => !emptyGroups.includes(index)),
+    ];
+    let cursorX = occupied.length > 0 ? Math.min(...occupied.map(item => item.x)) : 0;
+    const baseY = occupied.length > 0
+      ? Math.max(...occupied.map(item => item.y + item.height)) + GROUP_PADDING * 2
+      : 0;
+    for (const index of emptyGroups) {
+      const empty = layoutGroups[index];
+      if (empty.depth > 0) continue; // nested empties stay with their parent
+      empty.x = cursorX;
+      empty.y = baseY;
+      cursorX += empty.width + GROUP_PADDING;
+    }
+  }
+
   layoutGroups.sort((a, b) => a.depth - b.depth);
   return layoutGroups;
 }
 
 /**
  * Build a monotone remap of coordinates along one axis that shrinks every
- * empty gap between occupied bands down to `maxGap`. Coordinates inside
+ * empty gap between occupied bands down to its budget. Coordinates inside
  * occupied bands translate rigidly; coordinates inside a compressed gap
- * (e.g. long-edge control points) scale linearly within it.
+ * (e.g. long-edge control points) scale linearly within it. The budget is
+ * per-gap so gaps crossed by many nested group borders keep enough room.
  */
 function buildAxisCompressionMap(
   intervals: Array<[number, number]>,
-  maxGap: number,
+  gapBudget: (gapStart: number, gapEnd: number) => number,
 ): (value: number) => number {
   if (intervals.length === 0) return value => value;
 
@@ -246,7 +270,8 @@ function buildAxisCompressionMap(
   for (let i = 0; i < merged.length; i++) {
     if (i > 0) {
       const gap = merged[i][0] - merged[i - 1][1];
-      offset += Math.max(0, gap - maxGap);
+      const budget = gapBudget(merged[i - 1][1], merged[i][0]);
+      offset += Math.max(0, gap - budget);
     }
     anchors.push([merged[i][0], merged[i][0] - offset]);
     anchors.push([merged[i][1], merged[i][1] - offset]);
@@ -528,23 +553,50 @@ export function computeLayout(graph: Graph): LayoutResult {
     nodeMap.set(node.id, layoutNode);
   }
 
-  // Squash the dead space introduced by cluster border ranks. The remap is
-  // shared by nodes, edge control points, and cluster rectangles so the
-  // geometry stays consistent.
-  const direction = graph.direction ?? 'TB';
-  const isHorizontal = direction === 'LR' || direction === 'RL';
-  let mapRankAxis: (value: number) => number = value => value;
-  if (clusterKeys.size > 0) {
-    const intervals = layoutNodes
-      .filter(node => !explicitPositionIds.has(node.id))
-      .map(node => (
-        isHorizontal ? [node.x, node.x + node.width] : [node.y, node.y + node.height]
-      ) as [number, number]);
-    mapRankAxis = buildAxisCompressionMap(intervals, MAX_RANK_GAP);
+  // Squash the dead space introduced by cluster border ranks, on both axes.
+  // The remap is shared by nodes, edge control points, and cluster
+  // rectangles so the geometry stays consistent.
+  let mapX: (value: number) => number = value => value;
+  let mapY: (value: number) => number = value => value;
+  // Explicitly positioned nodes keep absolute coordinates, so shifting the
+  // auto-laid content around them could create collisions — leave graphs
+  // that mix pinned and auto nodes uncompressed.
+  if (clusterKeys.size > 0 && explicitPositionIds.size === 0) {
+    // Cluster border positions (pre-compression coordinates). A gap crossed
+    // by group-box edges must keep room for each border it contains: top
+    // edges carry padding plus the label strip, the other edges padding only.
+    const startsX: number[] = [];
+    const endsX: number[] = [];
+    const startsY: number[] = [];
+    const endsY: number[] = [];
+    for (const key of clusterKeys.values()) {
+      const clusterNode = g.node(key);
+      if (!clusterNode || !Number.isFinite(clusterNode.x) || !Number.isFinite(clusterNode.y)) continue;
+      const halfW = ((clusterNode.width as number) ?? 0) / 2;
+      const halfH = ((clusterNode.height as number) ?? 0) / 2;
+      startsX.push((clusterNode.x as number) - halfW);
+      endsX.push((clusterNode.x as number) + halfW);
+      startsY.push((clusterNode.y as number) - halfH);
+      endsY.push((clusterNode.y as number) + halfH);
+    }
+    const makeGapBudget = (starts: number[], ends: number[], startCost: number) =>
+      (gapStart: number, gapEnd: number): number => {
+        let needed = 0;
+        for (const s of starts) if (s > gapStart && s < gapEnd) needed += startCost;
+        for (const e of ends) if (e > gapStart && e < gapEnd) needed += GROUP_PADDING;
+        return Math.max(MAX_RANK_GAP, needed + 32);
+      };
+    mapX = buildAxisCompressionMap(
+      layoutNodes.map(node => [node.x, node.x + node.width] as [number, number]),
+      makeGapBudget(startsX, endsX, GROUP_PADDING),
+    );
+    mapY = buildAxisCompressionMap(
+      layoutNodes.map(node => [node.y, node.y + node.height] as [number, number]),
+      makeGapBudget(startsY, endsY, GROUP_PADDING + GROUP_LABEL_HEIGHT),
+    );
     for (const node of layoutNodes) {
-      if (explicitPositionIds.has(node.id)) continue;
-      if (isHorizontal) node.x = mapRankAxis(node.x);
-      else node.y = mapRankAxis(node.y);
+      node.x = mapX(node.x);
+      node.y = mapY(node.y);
     }
   }
 
@@ -574,8 +626,8 @@ export function computeLayout(graph: Graph): LayoutResult {
       && !compactedNodeIds.has(edge.to)
     ) {
       points = (dagreEdge.points as Array<{ x: number; y: number }>).map(p => ({
-        x: isHorizontal ? mapRankAxis(p.x) : p.x,
-        y: isHorizontal ? p.y : mapRankAxis(p.y),
+        x: mapX(p.x),
+        y: mapY(p.y),
       }));
     } else {
       points = [{ ...fromCenter }, { ...toCenter }];
@@ -591,31 +643,12 @@ export function computeLayout(graph: Graph): LayoutResult {
     layoutEdges.push({ edge, points });
   }
 
-  // Group rectangles: union of dagre's cluster geometry (which reserved real
-  // space in the layout) and the padded bounding box of members and children.
-  const clusterRects = new Map<Group, Rect>();
-  for (const [group, key] of clusterKeys) {
-    // Compaction moved this group's members after dagre ran, so the cluster
-    // rectangle no longer matches reality — the member bounding box takes over.
-    if (group.members.some(id => compactedNodeIds.has(id))) continue;
-    const clusterNode = g.node(key);
-    if (!clusterNode || !Number.isFinite(clusterNode.x) || !Number.isFinite(clusterNode.y)) continue;
-    const width = (clusterNode.width as number) ?? 0;
-    const height = (clusterNode.height as number) ?? 0;
-    let x1 = (clusterNode.x as number) - width / 2;
-    let y1 = (clusterNode.y as number) - height / 2;
-    let x2 = x1 + width;
-    let y2 = y1 + height;
-    if (isHorizontal) {
-      x1 = mapRankAxis(x1);
-      x2 = mapRankAxis(x2);
-    } else {
-      y1 = mapRankAxis(y1);
-      y2 = mapRankAxis(y2);
-    }
-    clusterRects.set(group, { x: x1, y: y1, width: x2 - x1, height: y2 - y1 });
-  }
-  const layoutGroups = computeGroupLayouts(graph.groups, nodeMap, clusterRects);
+  // Group rectangles come from the padded bounding box of members and child
+  // groups. Dagre's own cluster rectangles are deliberately not used: their
+  // border ranks extend far past the content, inflating boxes with dead
+  // space. Compound placement plus gap compression already guarantee that
+  // non-members sit at least a band gap away, so snug boxes stay disjoint.
+  const layoutGroups = computeGroupLayouts(graph.groups, nodeMap, new Map());
 
   // Compute total bounds
   const allX = [
