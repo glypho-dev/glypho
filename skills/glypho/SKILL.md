@@ -191,6 +191,10 @@ npx glypho render diagram.g -f png -o diagram.png
 
 # Render PNG at 2x resolution
 npx glypho render diagram.g -f png --scale 2 -o diagram.png
+# Note: PNG export supports CJK and other non-Latin scripts, but NOT emoji —
+# the PNG rasterizer (resvg) has no color-font support, and an emoji in a label
+# currently breaks that label's entire text run. Keep emoji out of labels when
+# targeting PNG; SVG output renders emoji fine in browsers.
 
 # Render with background color
 npx glypho render diagram.g -b white -o diagram.svg

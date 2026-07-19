@@ -2,6 +2,7 @@ import type { Shape, Style } from '@glypho/parser';
 import type { LayoutNode } from '../layout/types.js';
 import { resolveNodeStyle } from '../styles/resolve.js';
 import { DEFAULT_TEXT_COLOR } from '../styles/defaults.js';
+import { LINE_HEIGHT, wrapLabel } from '../layout/sizing.js';
 import {
   RectShape,
   DiamondShape,
@@ -32,7 +33,7 @@ export function NodeRenderer({ layoutNode, styles, onClick }: NodeRendererProps)
   const style = resolveNodeStyle(node, styles);
   const ShapeComponent = SHAPE_COMPONENT[shape];
   const label = node.label ?? node.id;
-  const lines = label.split('\n');
+  const lines = wrapLabel(label);
 
   return (
     <g
@@ -46,7 +47,7 @@ export function NodeRenderer({ layoutNode, styles, onClick }: NodeRendererProps)
         <text
           key={i}
           x={width / 2}
-          y={height / 2 + (i - (lines.length - 1) / 2) * 20}
+          y={height / 2 + (i - (lines.length - 1) / 2) * LINE_HEIGHT}
           textAnchor="middle"
           dominantBaseline="central"
           fill={DEFAULT_TEXT_COLOR}
