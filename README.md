@@ -19,6 +19,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License"></a>
 </p>
 
+<p align="center">
+  <img src="assets/readme-hero.svg" alt="A colorful flowchart rendered by Glypho: idea → write .g → valid? → render SVG → shipped, with a fix loop" width="100%">
+</p>
+<p align="center">
+  <sub>Drawn by <a href="assets/readme-hero.g">14 lines of <code>.g</code></a> — 102 tokens where JSON Canvas needs 580.</sub>
+</p>
+
 ---
 
 Glypho (`.g` format) is a compact text notation for diagrams. You describe nodes and connections in a few short lines, and Glypho renders them as SVG. Think of it like Mermaid, but radically shorter — single-character operators, one-line-per-thing, designed from the ground up for LLMs.
@@ -121,9 +128,31 @@ The `.g` format was designed to use as few tokens as possible. Early comparisons
 
 ## Features
 
+Every shape and every edge type, in one line each:
+
 <p align="center">
-  <img src=".github/images/features.svg" alt="Glypho features overview" width="500">
+  <img src=".github/images/shapes-edges.svg" alt="All six Glypho shapes connected by the five edge types" width="100%">
 </p>
+
+<details>
+<summary>Source (<code>.github/images/shapes-edges.g</code>)</summary>
+
+```
+>LR
+a:r Rectangle #08f
+b:d Diamond #fa0
+c:c Circle #a5f
+d:o Oval #0a5
+e:p Pill #f55
+f:h Hexagon #f80
+a>b flow
+b~c dashed
+c=d thick
+d--e undirected
+e<>f bidirectional
+```
+
+</details>
 
 | Category | Syntax | Description |
 |----------|--------|-------------|
@@ -139,6 +168,38 @@ The `.g` format was designed to use as few tokens as possible. Early comparisons
 | **Converters** | Mermaid, DOT, JSON Canvas | import and export |
 
 See the [full specification](spec/specification.md) for details on every feature.
+
+---
+
+## Gallery
+
+Everything below is auto-laid-out from plain `.g` text — click a caption to see the source.
+
+<p align="center">
+  <img src=".github/images/flowchart.svg" alt="Login flow with MFA: grouped auth steps, decision diamonds, and outcome states" width="100%">
+</p>
+<p align="center"><sub>Login flow with groups and decisions — <a href="spec/examples/flowchart.g">flowchart.g</a></sub></p>
+
+<table>
+<tr>
+<td width="42%" align="center" valign="top">
+  <img src=".github/images/erd.svg" alt="Entity-relationship diagram with multiline table nodes"><br>
+  <sub>Entities with multiline labels — <a href="spec/examples/erd.g">erd.g</a></sub>
+</td>
+<td width="58%" align="center" valign="top">
+  <img src=".github/images/nested-groups.svg" alt="Nested group boxes containing frontend and backend services"><br>
+  <sub>Nested groups — <a href="spec/examples/nested-groups.g">nested-groups.g</a></sub>
+  <br><br>
+  <img src=".github/images/hungry.svg" alt="Small decision flowchart about being hungry"><br>
+  <sub>Four-line decision — <a href="spec/examples/hungry.g">hungry.g</a></sub>
+</td>
+</tr>
+</table>
+
+<p align="center">
+  <img src=".github/images/mindmap.svg" alt="Mind map drawn with undirected edges radiating from a central topic" width="100%">
+</p>
+<p align="center"><sub>Mind map with undirected edges — <a href="spec/examples/mindmap.g">mindmap.g</a></sub></p>
 
 ---
 
