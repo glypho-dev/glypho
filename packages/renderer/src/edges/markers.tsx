@@ -1,10 +1,10 @@
 const DEFAULT_COLOR = '#444444';
 
-function MarkerTriple({ color, suffix }: { color: string; suffix: string }) {
+function MarkerTriple({ color, prefix, suffix }: { color: string; prefix: string; suffix: string }) {
   return (
     <>
       <marker
-        id={`arrowhead${suffix}`}
+        id={`${prefix}-arrowhead${suffix}`}
         markerWidth={10}
         markerHeight={7}
         refX={0}
@@ -15,7 +15,7 @@ function MarkerTriple({ color, suffix }: { color: string; suffix: string }) {
         <polygon points="0 0, 10 3.5, 0 7" fill={color} />
       </marker>
       <marker
-        id={`arrowhead-thick${suffix}`}
+        id={`${prefix}-arrowhead-thick${suffix}`}
         markerWidth={14}
         markerHeight={10}
         refX={0}
@@ -26,7 +26,7 @@ function MarkerTriple({ color, suffix }: { color: string; suffix: string }) {
         <polygon points="0 0, 14 5, 0 10" fill={color} />
       </marker>
       <marker
-        id={`arrowhead-reverse${suffix}`}
+        id={`${prefix}-arrowhead-reverse${suffix}`}
         markerWidth={10}
         markerHeight={7}
         refX={10}
@@ -44,7 +44,7 @@ export interface MarkerDefsResult {
   suffixMap: Map<string, string>;
 }
 
-export function MarkerDefs({ colors = [] }: { colors?: string[] }) {
+export function MarkerDefs({ colors = [], prefix }: { colors?: string[]; prefix: string }) {
   const unique = [DEFAULT_COLOR, ...colors.filter(c => c !== DEFAULT_COLOR)];
   const seen = new Set<string>();
   const ordered: { color: string; suffix: string }[] = [];
@@ -59,7 +59,7 @@ export function MarkerDefs({ colors = [] }: { colors?: string[] }) {
   return (
     <defs>
       {ordered.map(({ color, suffix }) => (
-        <MarkerTriple key={suffix} color={color} suffix={suffix} />
+        <MarkerTriple key={suffix} color={color} prefix={prefix} suffix={suffix} />
       ))}
     </defs>
   );
@@ -83,13 +83,13 @@ export function buildSuffixMap(colors: string[]): Map<string, string> {
   return suffixMap;
 }
 
-export function markerEndRef(op: string, suffix: string): string | undefined {
+export function markerEndRef(op: string, prefix: string, suffix: string): string | undefined {
   if (op === '--') return undefined;
   const base = op === '=' ? 'arrowhead-thick' : 'arrowhead';
-  return `url(#${base}${suffix})`;
+  return `url(#${prefix}-${base}${suffix})`;
 }
 
-export function markerStartRef(op: string, suffix: string): string | undefined {
+export function markerStartRef(op: string, prefix: string, suffix: string): string | undefined {
   if (op !== '<>') return undefined;
-  return `url(#arrowhead-reverse${suffix})`;
+  return `url(#${prefix}-arrowhead-reverse${suffix})`;
 }

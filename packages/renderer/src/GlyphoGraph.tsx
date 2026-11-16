@@ -1,9 +1,10 @@
-import { useMemo } from 'react';
+import { useId, useMemo } from 'react';
 import type { Graph } from '@glypho/parser';
 import { computeLayout } from './layout/layout.js';
 import { computeViewBox } from './layout/viewbox.js';
 import { MarkerDefs, buildSuffixMap } from './edges/markers.js';
 import { resolveEdgeColor } from './styles/resolve.js';
+import { sanitizeIdPrefix } from './svg/markers.js';
 import { GroupRenderer } from './groups/GroupRenderer.js';
 import { EdgePath, EdgeLabel } from './edges/EdgeRenderer.js';
 import { NodeRenderer } from './nodes/NodeRenderer.js';
@@ -32,6 +33,9 @@ export function GlyphoGraph({
   const layout = useMemo(() => computeLayout(graph), [graph]);
   const edgeColors = useMemo(() => layout.edges.map(e => resolveEdgeColor(e.edge.color)), [layout]);
   const suffixMap = useMemo(() => buildSuffixMap(edgeColors), [edgeColors]);
+  // Marker IDs are document-global; namespace them per component instance so
+  // two graphs on one page never resolve each other's arrowheads.
+  const markerPrefix = `glypho-${sanitizeIdPrefix(useId())}`;
 
   const viewBox = computeViewBox(layout, padding);
 
@@ -44,10 +48,11 @@ export function GlyphoGraph({
       style={{ maxWidth: '100%', ...style }}
       xmlns="http://www.w3.org/2000/svg"
     >
-      <MarkerDefs colors={edgeColors} />
+      <MarkerDefs colors={edgeColors} prefix={markerPrefix} />
       {/* Layer 1: Groups (background) */}
-      {layout.groups.map(g => (
-        <GroupRenderer key={g.group.id} layoutGroup={g} />
+      {/* Group names may repeat, so key by position */}
+      {layout.groups.map((g, i) => (
+        <GroupRenderer key={`group-${i}`} layoutGroup={g} />
       ))}
       {/* Layer 2: Edge paths */}
       {layout.edges.map((e, i) => (
@@ -55,6 +60,7 @@ export function GlyphoGraph({
           key={`path-${e.edge.from}-${e.edge.to}-${i}`}
           layoutEdge={e}
           suffixMap={suffixMap}
+          markerPrefix={markerPrefix}
           onClick={onEdgeClick}
         />
       ))}
