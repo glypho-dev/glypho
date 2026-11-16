@@ -4,6 +4,64 @@ All notable changes to the Glypho packages will be documented in this file.
 
 All packages (`@glypho/parser`, `@glypho/renderer`, `@glypho/cli`, `glypho`) are versioned in lockstep.
 
+## 0.3.0 — Strict Parser, Denser Labelled Layouts, CLI Hardening
+
+### Breaking
+
+- **Parser**: unknown escapes in quoted strings, such as `"C:\path"`, are now errors. Write `"C:\\path"`.
+- **Parser**: bare style values may only contain ASCII letters, digits and `. _ % , + -`. Quote anything else, including non-ASCII text (`$#a{font:"Noto Sans"}`).
+- **Parser**: group members and positions that name an undeclared id now create that node, as class assignments already did. Before, they were dropped.
+- **CLI**: empty input is an error, so `glypho check` no longer passes on an empty stdin.
+- **CLI**: `render` takes its output format from the `-o` extension (`-o out.png` writes PNG) unless `--format` is given, and refuses to overwrite its input file.
+- **All packages**: Node.js >=22 is required (`engines`). Node 20 is end-of-life.
+- **Renderer**: layouts change for graphs with edge labels. Labels are centred on their edge and sized in the layout, so these graphs are laid out differently and are often slightly larger. Arrowhead marker ids are now `<prefix>-arrowhead…` rather than `arrowhead…`.
+
+### @glypho/parser
+
+- Unterminated strings (`"…` and `"""…`) are line-anchored errors instead of silently swallowing the rest of the file
+- Fix backslash at end of file and line counting after escaped newlines
+- Style values accept decimals, units and dash lists (`stroke-width:1.5`, `12px`, `5,5`)
+- `$#add{…}`-style id selectors no longer lex as hex colors
+- Mermaid import: compact arrows (`A-->B`, `C---D`), `A -- label --> B` and `-.->`; only lowercase `end` closes a subgraph; HTML entities are decoded
+- Importers rewrite ids that aren't valid `.g` ids (`_start` → `start`, `1` → `n1`) and keep the original as the label; named colors become hex; DOT `1 -> 2` edges are no longer dropped
+- `graphToGlypho` quotes labels that wouldn't re-lex (`3D`, `_x`, `a-`, labels containing `"""`), keeps quoted style values and drops non-hex colors
+- `graphToDot` quotes non-plain ids and keywords; `graphToMermaid` escapes `&` and `<`
+- Deep nesting reports a stack-overflow error instead of crashing
+- Every spec example now round-trips through `.g`, Mermaid and DOT in tests
+
+### @glypho/renderer
+
+- `escapeXml` strips XML-invalid control characters that made resvg and strict XML parsers reject the SVG
+- Arrowhead marker ids get a per-graph prefix, so two diagrams on one page no longer share arrowhead colors. The default prefix is a hash of the graph, so output stays deterministic; set it with the new `RenderSvgOptions.idPrefix`
+- Parallel edges are routed separately instead of overprinting
+- Edge labels use the glyph-aware sizer, wrap and honour `\n`; CJK labels no longer overflow and get clipped
+- Density: label room is reserved only along the rank axis, and flat labelled graphs are compressed back to normal rank spacing. Across the spec examples, label/node/group collisions drop from 13 to 3
+- Empty nested groups get their own slot instead of sitting at (0,0); self-loops on pinned nodes route properly
+- `stroke-width` values that are non-numeric or negative fall back to the default instead of emitting `NaN`; large values are clamped to 20
+- New exports: `measureEdgeLabel()`, `EdgeLabelBox` type, and `LayoutEdge.labelBox`
+- The root entry re-exports `render`/`renderSvg`, and `typesVersions` makes `@glypho/renderer/svg` resolve under `moduleResolution: node10`
+
+### @glypho/cli
+
+- Clean `error: …` messages with exit code 1 instead of stack traces for a missing file, a directory as input, bad PNG options and non-numeric `--width`/`--scale`
+- `--from g|mermaid|dot` sets the input format for stdin or unknown extensions; `check` and `info` detect `.mmd`/`.dot` by extension
+- `render` creates missing output directories
+- `--version` reads `package.json` instead of a hard-coded `0.1.0`
+
+### glypho
+
+- Re-exports the sizing helpers, including `measureEdgeLabel` and `EdgeLabelBox`
+- `typesVersions` makes `glypho/react` types resolve under `moduleResolution: node10`
+
+### CI, docs and repo
+
+- CI and publish use `npm ci` against the committed lockfile; the test matrix is Node 22 and 24
+- Every `.g` snippet in the READMEs and SKILL.md passes `glypho check`; the README token table is regenerated from `glypho info`
+- README images and the hero diagram are re-rendered with the 0.3.0 renderer
+- AGENTS.md and CLAUDE.md gain a public-repository checklist (secrets, personal data, local paths) for every commit; `CLAUDE.local.md` is git-ignored
+
+---
+
 ## 0.1.4 — Umbrella Package README
 
 ### glypho
