@@ -4,6 +4,23 @@ All notable changes to the Glypho packages will be documented in this file.
 
 All packages (`@glypho/parser`, `@glypho/renderer`, `@glypho/cli`, `glypho`) are versioned in lockstep.
 
+## 0.3.1 — Layout Regression Fixes
+
+Patch release for layout regressions in 0.3.0, found on the larger glypho.dev editor examples. Layouts change for graphs that mix pinned and auto-placed nodes, chains inside groups, and edges that ran past neighbouring nodes. No API or syntax changes.
+
+### @glypho/renderer
+
+- Graphs that mix pinned (`id@x,y`) and auto-placed nodes: pinned nodes keep their exact coordinates, and the auto-placed part is compressed and then moved as one block to the tightest spot clear of them. Before, one pinned node turned compression off for the whole graph and groups could overlap.
+- Chains inside groups use the normal 80px rank gap unless a group border needs more room. Before, they had a 104px minimum and looked stretched.
+- Edges no longer run through the nodes next to their endpoints. Flat first and last legs are squared off and run sideways in the gap between rows. Back edges keep their curves.
+- Arrowheads are no longer hidden under the target node when the last segment of a route is shorter than the arrowhead.
+- Every spec example is now checked for edges through nodes and edge labels over nodes.
+
+### @glypho/parser
+
+- A bare label with punctuation (`Pass?`, `C++`, `+`) reports one error that suggests the quoted form (`"Pass?"`).
+- A multi-word bare style value (`font:Noto Sans!`) reports one error with the quoted form (`font:"Noto Sans!"`) instead of a second, misleading error.
+
 ## 0.3.0 — Strict Parser, Denser Labelled Layouts, CLI Hardening
 
 ### Breaking
