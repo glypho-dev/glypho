@@ -40,7 +40,7 @@ export function graphToDot(graph: Graph): string {
 
   // Emit groups as subgraphs (recursive for nested groups)
   function emitGroup(group: Group, indent: string): void {
-    lines.push(`${indent}subgraph cluster_${group.id} {`);
+    lines.push(`${indent}subgraph ${dotId(`cluster_${group.id}`)} {`);
     lines.push(`${indent}    label="${escapeLabel(group.label ?? group.id)}";`);
     for (const member of group.members) {
       const node = graph.nodes.find(n => n.id === member);
@@ -80,11 +80,20 @@ export function graphToDot(graph: Graph): string {
     // In a digraph, all edges must use -> (use dir=none for undirected)
     const op = hasDirected ? '->' : '--';
     const attrStr = attrs.length > 0 ? ` [${attrs.join(', ')}]` : '';
-    lines.push(`    ${edge.from} ${op} ${edge.to}${attrStr};`);
+    lines.push(`    ${dotId(edge.from)} ${op} ${dotId(edge.to)}${attrStr};`);
   }
 
   lines.push('}');
   return lines.join('\n');
+}
+
+// DOT keywords are case-insensitive and can't be used as bare ids
+const DOT_KEYWORDS = new Set(['node', 'edge', 'graph', 'digraph', 'subgraph', 'strict']);
+
+/** Quote an id unless it's a plain DOT identifier (`my-node` would lex as `my` `-node`) */
+function dotId(id: string): string {
+  if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(id) && !DOT_KEYWORDS.has(id.toLowerCase())) return id;
+  return `"${escapeLabel(id)}"`;
 }
 
 function escapeLabel(s: string): string {
@@ -114,5 +123,5 @@ function formatNode(node: { id: string; shape?: Shape; label?: string; color?: s
     attrs.push(`fillcolor="${node.color}"`);
   }
 
-  return `${node.id} [${attrs.join(', ')}];`;
+  return `${dotId(node.id)} [${attrs.join(', ')}];`;
 }

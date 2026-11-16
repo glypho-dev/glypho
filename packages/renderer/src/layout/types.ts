@@ -14,9 +14,21 @@ export interface LayoutNode {
   node: Node;
 }
 
+export interface EdgeLabelBox {
+  /** Center of the label box */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** Display lines (manual `\n` breaks plus auto-wrap) */
+  lines: string[];
+}
+
 export interface LayoutEdge {
   edge: Edge;
   points: Point[];
+  /** Present when the edge has a label */
+  labelBox?: EdgeLabelBox;
 }
 
 export interface LayoutGroup {

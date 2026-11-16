@@ -24,6 +24,8 @@ export enum TokenType {
   HEX_COLOR = 'HEX_COLOR',
   QUOTED_STRING = 'QUOTED_STRING',
   MULTILINE_STRING = 'MULTILINE_STRING',
+  /** Raw style property value (`1.5`, `12px`, `bold`) — only emitted after `prop:` inside a style block */
+  STYLE_VALUE = 'STYLE_VALUE',
 
   // Whitespace / control
   NEWLINE = 'NEWLINE',
@@ -53,6 +55,12 @@ function isIdContinue(ch: string): boolean {
   return isLetter(ch) || isDigit(ch) || ch === '_';
 }
 
+/** Characters that end a raw style value: whitespace and the grammar's reserved set */
+const STYLE_VALUE_STOP = new Set([' ', '\t', '\n', '\r', '>', '~', '=', ':', '@', '^', '#', '{', '}', '"']);
+
+/** A bare style value is ASCII-only, like bare labels; anything else must be quoted */
+const BARE_STYLE_VALUE = /^[A-Za-z0-9._%,+-]+$/;
+
 export class Lexer {
   private input: string;
   private pos = 0;
@@ -60,6 +68,10 @@ export class Lexer {
   private column = 1;
   private tokens: Token[] = [];
   readonly errors: ParseError[] = [];
+  /** Inside the braces of a `$selector{...}` style block (style blocks are single-line) */
+  private inStyleBlock = false;
+  /** Just lexed `prop:` inside a style block, so the next token is a property value */
+  private expectStyleValue = false;
 
   constructor(input: string) {
     this.input = input;
@@ -71,6 +83,20 @@ export class Lexer {
       if (this.pos >= this.input.length) break;
 
       const ch = this.input[this.pos];
+
+      if (ch === '\n' || ch === '\r') {
+        this.inStyleBlock = false;
+        this.expectStyleValue = false;
+      }
+
+      if (this.expectStyleValue) {
+        this.expectStyleValue = false;
+        // Quoted values and #hex colors keep their usual tokens
+        if (!STYLE_VALUE_STOP.has(ch)) {
+          this.readStyleValue();
+          continue;
+        }
+      }
 
       if (ch === '\n') {
         this.emit(TokenType.NEWLINE, '\n');
@@ -119,11 +145,26 @@ export class Lexer {
       if (ch === '>') { this.emit(TokenType.GT, '>'); this.advance(); continue; }
       if (ch === '~') { this.emit(TokenType.TILDE, '~'); this.advance(); continue; }
       if (ch === '=') { this.emit(TokenType.EQUALS, '='); this.advance(); continue; }
-      if (ch === ':') { this.emit(TokenType.COLON, ':'); this.advance(); continue; }
+      if (ch === ':') {
+        if (this.inStyleBlock && this.lastToken()?.type === TokenType.ID) this.expectStyleValue = true;
+        this.emit(TokenType.COLON, ':');
+        this.advance();
+        continue;
+      }
       if (ch === '@') { this.emit(TokenType.AT, '@'); this.advance(); continue; }
       if (ch === '^') { this.emit(TokenType.CARET, '^'); this.advance(); continue; }
-      if (ch === '{') { this.emit(TokenType.LBRACE, '{'); this.advance(); continue; }
-      if (ch === '}') { this.emit(TokenType.RBRACE, '}'); this.advance(); continue; }
+      if (ch === '{') {
+        if (this.isStyleSelectorBehind()) this.inStyleBlock = true;
+        this.emit(TokenType.LBRACE, '{');
+        this.advance();
+        continue;
+      }
+      if (ch === '}') {
+        this.inStyleBlock = false;
+        this.emit(TokenType.RBRACE, '}');
+        this.advance();
+        continue;
+      }
       if (ch === ',') { this.emit(TokenType.COMMA, ','); this.advance(); continue; }
       if (ch === '$') { this.emit(TokenType.DOLLAR, '$'); this.advance(); continue; }
       if (ch === '.') { this.emit(TokenType.DOT, '.'); this.advance(); continue; }
@@ -150,6 +191,37 @@ export class Lexer {
 
     this.emit(TokenType.EOF, '');
     return this.tokens;
+  }
+
+  private lastToken(): Token | undefined {
+    return this.tokens[this.tokens.length - 1];
+  }
+
+  /** True when the last tokens are `$` plus a selector (`:r`, `.cls`, `#id`) */
+  private isStyleSelectorBehind(): boolean {
+    const n = this.tokens.length;
+    if (n < 3) return false;
+    const [dollar, sigil, name] = this.tokens.slice(n - 3);
+    return dollar.type === TokenType.DOLLAR
+      && (sigil.type === TokenType.COLON || sigil.type === TokenType.DOT || sigil.type === TokenType.HASH)
+      && name.type === TokenType.ID;
+  }
+
+  private readStyleValue(): void {
+    const startCol = this.column;
+    let value = '';
+    while (this.pos < this.input.length && !STYLE_VALUE_STOP.has(this.input[this.pos])) {
+      value += this.input[this.pos];
+      this.advance();
+    }
+    if (!BARE_STYLE_VALUE.test(value)) {
+      this.errors.push({
+        message: `Style value '${value}' must be quoted — bare values may only use ASCII letters, digits and . _ % , + -`,
+        line: this.line,
+        column: startCol,
+      });
+    }
+    this.tokens.push({ type: TokenType.STYLE_VALUE, value, line: this.line, column: startCol });
   }
 
   private peek(offset: number): string | undefined {
@@ -211,27 +283,44 @@ export class Lexer {
         return;
       }
       if (ch === '\\') {
-        this.pos++;
-        this.column++;
-        const esc = this.input[this.pos];
+        const esc = this.input[this.pos + 1];
+        // A backslash before a line break or EOF escapes nothing, so the string
+        // is unterminated. Stop before the break so the main loop still counts
+        // the line.
+        if (esc === undefined || esc === '\n' || esc === '\r') {
+          this.pos++;
+          this.column++;
+          break;
+        }
         if (esc === 'n') value += '\n';
         else if (esc === 't') value += '\t';
         else if (esc === '\\') value += '\\';
         else if (esc === '"') value += '"';
-        else value += esc; // pass through unknown escapes
-        this.pos++;
-        this.column++;
+        else {
+          this.errors.push({
+            message: `Unknown escape sequence '\\${esc}' — supported escapes are \\n, \\t, \\\\ and \\" (use \\\\ for a literal backslash)`,
+            line: this.line,
+            column: this.column,
+          });
+          value += '\\' + esc;
+        }
+        this.pos += 2;
+        this.column += 2;
         continue;
       }
       if (ch === '\n' || ch === '\r') {
-        // Unterminated string — stop at newline
+        // Quoted strings can't span lines
         break;
       }
       value += ch;
       this.pos++;
       this.column++;
     }
-    // Unterminated — emit what we have
+    this.errors.push({
+      message: 'Unterminated string — add a closing " on the same line (use triple quotes for multiline labels)',
+      line: startLine,
+      column: startCol,
+    });
     this.tokens.push({ type: TokenType.QUOTED_STRING, value, line: startLine, column: startCol });
   }
 
@@ -267,12 +356,24 @@ export class Lexer {
         this.column++;
       }
     }
-    // Unterminated — emit what we have
+    // Report at the opening quotes: that's the cause, not the end of the file
+    // the string swallowed
+    this.errors.push({
+      message: 'Unterminated multiline string — add a closing """',
+      line: startLine,
+      column: startCol,
+    });
     this.tokens.push({ type: TokenType.MULTILINE_STRING, value, line: startLine, column: startCol });
   }
 
   private readHash(): void {
-    const startCol = this.column;
+    // After `$`, `#` starts an id selector (`$#add{...}`), never a color, even
+    // when the id happens to be valid hex
+    if (this.lastToken()?.type === TokenType.DOLLAR) {
+      this.emit(TokenType.HASH, '#');
+      this.advance();
+      return;
+    }
     // Check if this is a hex color: # followed by 3 or 6 hex digits
     let hexLen = 0;
     let i = this.pos + 1;
@@ -282,9 +383,10 @@ export class Lexer {
     }
 
     if (hexLen === 3 || hexLen === 6) {
-      // Check that it's followed by a non-hex-digit (or end of input)
+      // `#abcxyz` is not the color #abc followed by xyz: the color must not run
+      // into more identifier characters
       const nextCh = this.input[i];
-      if (nextCh === undefined || !isHexDigit(nextCh)) {
+      if (nextCh === undefined || (!isIdContinue(nextCh) && nextCh !== '-')) {
         this.emit(TokenType.HASH, '#');
         this.advance(); // skip #
         const colorVal = this.input.slice(this.pos, this.pos + hexLen);

@@ -1,24 +1,23 @@
 import { Command } from 'commander';
-import { parse } from '@glypho/parser';
-import { formatInputName, readInput, resolveInputFile } from '../lib/io.js';
-import { printParseErrors } from '../lib/graph-input.js';
+import { loadGraph, printParseErrors } from '../lib/graph-input.js';
+import { FROM_HELP } from '../lib/detect-format.js';
 
 export const checkCommand = new Command('check')
-  .description('Validate a .g file')
-  .usage('[file] [--json]')
+  .description('Validate a .g, Mermaid, or DOT file')
+  .usage('[file] [--json] [--from <g|mermaid|dot>]')
   .argument('[file]', 'Input file (defaults to stdin when piped; use - for stdin)')
+  .option('--from <format>', FROM_HELP)
   .option('--json', 'Print machine-readable validation output')
   .addHelpText('after', `
 Examples:
   glypho check diagram.g
   glypho check --json diagram.g
   cat diagram.g | glypho check
+  glypho check flow.mmd
+  cat graph.dot | glypho check --from dot
 `)
-  .action((file: string | undefined, opts: { json?: boolean }) => {
-    const inputFile = resolveInputFile(file);
-    const input = readInput(inputFile);
-    const { graph, errors } = parse(input);
-    const name = formatInputName(inputFile);
+  .action((file: string | undefined, opts: { json?: boolean; from?: string }) => {
+    const { name, graph, errors } = loadGraph(file, opts.from);
 
     if (opts.json) {
       const result = {

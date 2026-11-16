@@ -2,6 +2,7 @@ import type {
   Graph, Node, Edge, Group, Style, Direction, Shape, EdgeOp,
   ParseError, ParseResult,
 } from './types.js';
+import { IdMap, normalizeColor } from './import-utils.js';
 
 // ---------------------------------------------------------------------------
 // DOT shape → Glyph shape mapping
@@ -110,6 +111,17 @@ function extractAttrBlock(text: string): [Record<string, string>, string] {
 class NodeRegistry {
   private map = new Map<string, Node>();
   private order: string[] = [];
+  private ids = new IdMap();
+  readonly groupIds = new IdMap();
+  /** Original DOT id for nodes whose id had to be rewritten, used as the label if none is given */
+  private fallbackLabels = new Map<string, string>();
+
+  /** Map a DOT id to its `.g` id */
+  resolve(raw: string): string {
+    const id = this.ids.get(raw);
+    if (id !== raw) this.fallbackLabels.set(id, raw);
+    return id;
+  }
 
   ensure(id: string, shape?: Shape, label?: string, color?: string): void {
     if (this.map.has(id)) {
@@ -132,7 +144,12 @@ class NodeRegistry {
   }
 
   toArray(): Node[] {
-    return this.order.map(id => this.map.get(id)!);
+    return this.order.map(id => {
+      const node = this.map.get(id)!;
+      const fallback = this.fallbackLabels.get(id);
+      if (fallback !== undefined && node.label === undefined) node.label = fallback;
+      return node;
+    });
   }
 }
 
@@ -159,10 +176,11 @@ function applyNodeAttrs(nodes: NodeRegistry, id: string, attrs: Record<string, s
     label = attrs.label;
   }
 
+  // Only hex survives into .g — a named color written through would re-parse as a label
   if (attrs.fillcolor) {
-    color = attrs.fillcolor;
+    color = normalizeColor(attrs.fillcolor);
   } else if (attrs.color && attrs.style?.includes('filled')) {
-    color = attrs.color;
+    color = normalizeColor(attrs.color);
   }
 
   // Ensure node exists first, then apply attrs
@@ -192,7 +210,8 @@ function edgeOpFromAttrs(attrs: Record<string, string>, isDirected: boolean): Ed
 
 function stripComments(input: string): string {
   // Remove /* ... */ block comments
-  let result = input.replace(/\/\*[\s\S]*?\*\//g, '');
+  // (newlines inside are kept so statement line numbers stay accurate)
+  let result = input.replace(/\/\*[\s\S]*?\*\//g, m => m.replace(/[^\n]/g, ''));
   // Remove // and # line comments, but not inside quoted strings
   let output = '';
   let inQuotes = false;
@@ -232,14 +251,35 @@ function stripComments(input: string): string {
 // We split on semicolons and newlines, but respect braces for subgraphs
 // ---------------------------------------------------------------------------
 
-function tokenizeStatements(body: string): string[] {
-  const statements: string[] = [];
+interface Statement {
+  text: string;
+  /** 1-based source line where the statement starts */
+  line: number;
+}
+
+function tokenizeStatements(body: string, firstLine: number): Statement[] {
+  const statements: Statement[] = [];
   let current = '';
   let depth = 0;
   let inQuotes = false;
+  let line = firstLine;
+  let startLine = firstLine;
+
+  const flush = () => {
+    const text = current.trim();
+    if (text.length > 0) {
+      // Count newlines before the first non-space character
+      const lead = current.length - current.trimStart().length;
+      const leadingNewlines = (current.slice(0, lead).match(/\n/g) ?? []).length;
+      statements.push({ text, line: startLine + leadingNewlines });
+    }
+    current = '';
+    startLine = line;
+  };
 
   for (let i = 0; i < body.length; i++) {
     const ch = body[i];
+    if (ch === '\n') line++;
 
     if (ch === '\\' && inQuotes && i + 1 < body.length) {
       current += ch + body[i + 1];
@@ -267,85 +307,97 @@ function tokenizeStatements(body: string): string[] {
     if (ch === '}') {
       depth--;
       current += ch;
+      // A closed block ends its statement unless an edge or attribute list
+      // continues it: `{ a b } c` is two statements, no separator required
+      if (depth === 0 && !/^\s*(->|--|\[)/.test(body.slice(i + 1))) flush();
       continue;
     }
 
     if (depth === 0 && (ch === ';' || ch === '\n')) {
-      const trimmed = current.trim();
-      if (trimmed.length > 0) {
-        statements.push(trimmed);
-      }
-      current = '';
+      flush();
       continue;
     }
 
     current += ch;
   }
 
-  const trimmed = current.trim();
-  if (trimmed.length > 0) {
-    statements.push(trimmed);
-  }
-
+  flush();
   return statements;
+}
+
+// ---------------------------------------------------------------------------
+// Shared parse state
+// ---------------------------------------------------------------------------
+
+interface DotContext {
+  nodes: NodeRegistry;
+  edges: Edge[];
+  groups: Group[];
+  isDirected: boolean;
+  errors: ParseError[];
 }
 
 // ---------------------------------------------------------------------------
 // Parse a subgraph block
 // ---------------------------------------------------------------------------
 
-function parseSubgraph(
-  stmt: string,
-  nodes: NodeRegistry,
-  edges: Edge[],
-  groups: Group[],
-  styles: Style[],
-  isDirected: boolean,
-  errors: ParseError[],
-  parentGroup?: Group,
-): void {
-  // Match: subgraph cluster_name { ... }
-  const match = stmt.match(/^subgraph\s+(\S+)\s*\{([\s\S]*)\}\s*$/);
-  if (!match) return;
+function parseSubgraph(stmt: Statement, ctx: DotContext, parentGroup?: Group): void {
+  // Match: subgraph [name] { ... }
+  const match = stmt.text.match(/^subgraph(?:\s+("(?:[^"\\]|\\.)*"|[^\s{]+))?\s*\{([\s\S]*)\}\s*$/);
+  if (!match) {
+    ctx.errors.push({ message: `Could not parse subgraph: "${stmt.text.split('\n')[0]}"`, line: stmt.line });
+    return;
+  }
 
-  const rawId = match[1];
-  const body = match[2];
+  const bodyLine = stmt.line + (stmt.text.slice(0, stmt.text.indexOf('{')).match(/\n/g) ?? []).length;
+  const innerStatements = tokenizeStatements(match[2], bodyLine);
 
+  // An anonymous subgraph (`subgraph { rank=same; a b }`) only scopes
+  // attributes — its nodes belong to the enclosing group
+  if (match[1] === undefined) {
+    for (const inner of innerStatements) parseStatement(inner, ctx, parentGroup);
+    return;
+  }
+
+  let rawId = match[1];
+  if (rawId.startsWith('"')) rawId = rawId.slice(1, -1).replace(/\\"/g, '"');
   // Strip cluster_ prefix for group ID
-  const id = rawId.startsWith('cluster_') ? rawId.slice(8) : rawId;
+  const strippedId = rawId.startsWith('cluster_') ? rawId.slice(8) : rawId;
+  const id = ctx.nodes.groupIds.get(strippedId);
 
-  const group: Group = { id, members: [] };
-
-  // Parse inner statements
-  const innerStatements = tokenizeStatements(body);
+  const group: Group = { id, members: [], line: stmt.line };
   let label: string | undefined;
 
   for (const inner of innerStatements) {
-    // Check for label attribute
-    const labelMatch = inner.match(/^label\s*=\s*"([^"]*)"\s*$/);
-    if (labelMatch) {
-      label = labelMatch[1];
+    // Subgraph label: `label="..."` or `graph [label="..."]`
+    const graphAttrs = inner.text.match(/^graph\s*(\[[\s\S]*\])\s*$/);
+    if (graphAttrs) {
+      const [attrs] = extractAttrBlock(graphAttrs[1]);
+      if (attrs.label !== undefined) label = attrs.label;
+      continue;
+    }
+    if (ATTR_ASSIGNMENT.test(inner.text)) {
+      const attrs = parseAttrs(inner.text);
+      if (attrs.label !== undefined) label = attrs.label;
       continue;
     }
 
-    // Check for graph-level attrs like [label=...]
-    if (inner.startsWith('graph ')) {
-      continue;
-    }
-
-    // Parse as normal statement (nodes, edges)
-    parseStatement(inner, nodes, edges, groups, styles, isDirected, errors, group);
+    parseStatement(inner, ctx, group);
   }
 
+  if (label === undefined && id !== strippedId) label = strippedId;
   if (label && label !== id) group.label = label;
 
   if (parentGroup) {
     if (!parentGroup.children) parentGroup.children = [];
     parentGroup.children.push(group);
   } else {
-    groups.push(group);
+    ctx.groups.push(group);
   }
 }
+
+/** `key=value` statement: a graph or subgraph attribute, not a node */
+const ATTR_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*\s*=/;
 
 // ---------------------------------------------------------------------------
 // Check if a statement contains an edge operator outside of quoted strings
@@ -384,44 +436,40 @@ function containsEdgeOp(stmt: string, op: string): boolean {
 // Parse a single statement
 // ---------------------------------------------------------------------------
 
-function parseStatement(
-  stmt: string,
-  nodes: NodeRegistry,
-  edges: Edge[],
-  groups: Group[],
-  styles: Style[],
-  isDirected: boolean,
-  errors: ParseError[],
-  parentGroup?: Group,
-): void {
-  const trimmed = stmt.trim();
+function parseStatement(stmt: Statement, ctx: DotContext, parentGroup?: Group): void {
+  const trimmed = stmt.text.trim();
   if (trimmed.length === 0) return;
 
   // Skip graph-level attributes
-  if (/^(graph|node|edge)\s*\[/.test(trimmed)) return;
+  if (/^(graph|node|edge)\s*\[/i.test(trimmed)) return;
+  if (ATTR_ASSIGNMENT.test(trimmed)) return;
 
-  // Subgraph
-  if (trimmed.startsWith('subgraph ')) {
-    parseSubgraph(trimmed, nodes, edges, groups, styles, isDirected, errors, parentGroup);
+  // Subgraph (named or anonymous)
+  if (/^subgraph\b/.test(trimmed)) {
+    parseSubgraph({ text: trimmed, line: stmt.line }, ctx, parentGroup);
+    return;
+  }
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    parseSubgraph({ text: 'subgraph ' + trimmed, line: stmt.line }, ctx, parentGroup);
     return;
   }
 
   // Edge statement: look for -> or -- outside of quoted strings and brackets
-  const edgeOp = isDirected ? '->' : '--';
+  const edgeOp = ctx.isDirected ? '->' : '--';
   if (containsEdgeOp(trimmed, edgeOp)) {
-    parseEdgeStatement(trimmed, edgeOp, nodes, edges, isDirected, parentGroup);
+    parseEdgeStatement(trimmed, stmt.line, edgeOp, ctx, parentGroup);
     return;
   }
 
   // Also check the other edge op in case of mixed usage
-  const altOp = isDirected ? '--' : '->';
+  const altOp = ctx.isDirected ? '--' : '->';
   if (containsEdgeOp(trimmed, altOp)) {
-    parseEdgeStatement(trimmed, altOp, nodes, edges, isDirected, parentGroup);
+    parseEdgeStatement(trimmed, stmt.line, altOp, ctx, parentGroup);
     return;
   }
 
   // Node statement
-  parseNodeStatement(trimmed, nodes, parentGroup);
+  parseNodeStatement(trimmed, stmt.line, ctx, parentGroup);
 }
 
 // ---------------------------------------------------------------------------
@@ -430,18 +478,15 @@ function parseStatement(
 
 function parseEdgeStatement(
   stmt: string,
+  line: number,
   edgeToken: string,
-  nodes: NodeRegistry,
-  edges: Edge[],
-  isDirected: boolean,
+  ctx: DotContext,
   parentGroup?: Group,
 ): void {
-  // Split on edge operator, but we need to handle trailing [attrs]
-  // First, extract any trailing attribute block
+  // Extract any trailing attribute block first
   let mainPart = stmt;
   let edgeAttrs: Record<string, string> = {};
 
-  // Find the last [ that's an attribute block (not inside a node id)
   const lastBracket = findTrailingAttrBlock(stmt);
   if (lastBracket !== -1) {
     const [attrs] = extractAttrBlock(stmt.slice(lastBracket));
@@ -449,36 +494,31 @@ function parseEdgeStatement(
     mainPart = stmt.slice(0, lastBracket).trim();
   }
 
-  // Split on edge operator
-  const parts = splitOnEdgeOp(mainPart, edgeToken);
-  if (parts.length < 2) return;
+  const parts = splitOnEdgeOp(mainPart, edgeToken).map(p => p.trim());
+  const endpoints = parts.map(p => extractNodeId(p));
+  const bad = endpoints.findIndex(e => e === null);
+  if (bad !== -1) {
+    ctx.errors.push({
+      message: `Unsupported DOT edge endpoint "${parts[bad] || '(empty)'}" — only node ids are supported`,
+      line,
+    });
+    return;
+  }
 
-  for (let i = 0; i < parts.length - 1; i++) {
-    const fromId = extractNodeId(parts[i].trim());
-    const toId = extractNodeId(parts[i + 1].trim());
-    if (!fromId || !toId) continue;
+  const ids = endpoints.map((e, i) => {
+    const id = ctx.nodes.resolve(e!.raw);
+    applyInlineAttrs(parts[i].slice(e!.length), id, ctx.nodes);
+    if (parentGroup && !parentGroup.members.includes(id)) parentGroup.members.push(id);
+    return id;
+  });
 
-    // Parse inline node attrs if present
-    parseNodeInlineAttrs(parts[i].trim(), nodes);
-    if (i === parts.length - 2) {
-      parseNodeInlineAttrs(parts[i + 1].trim(), nodes);
-    }
-
-    // Ensure nodes exist
-    nodes.ensure(fromId);
-    nodes.ensure(toId);
-
-    // Add to parent group
-    if (parentGroup) {
-      if (!parentGroup.members.includes(fromId)) parentGroup.members.push(fromId);
-      if (!parentGroup.members.includes(toId)) parentGroup.members.push(toId);
-    }
-
-    const op = edgeOpFromAttrs(edgeAttrs, isDirected || edgeToken === '->');
-    const edge: Edge = { from: fromId, to: toId, op };
+  const op = edgeOpFromAttrs(edgeAttrs, ctx.isDirected || edgeToken === '->');
+  const color = normalizeColor(edgeAttrs.color);
+  for (let i = 0; i < ids.length - 1; i++) {
+    const edge: Edge = { from: ids[i], to: ids[i + 1], op };
     if (edgeAttrs.label) edge.label = edgeAttrs.label;
-    if (edgeAttrs.color) edge.color = edgeAttrs.color;
-    edges.push(edge);
+    if (color) edge.color = color;
+    ctx.edges.push(edge);
   }
 }
 
@@ -492,11 +532,22 @@ function splitOnEdgeOp(text: string, op: string): string[] {
   let i = 0;
   let bracketDepth = 0;
 
-  while (i < text.length) {
-    if (text[i] === '[') bracketDepth++;
-    else if (text[i] === ']') bracketDepth--;
+  let inQuotes = false;
 
-    if (bracketDepth === 0 && text.slice(i, i + op.length) === op) {
+  while (i < text.length) {
+    const ch = text[i];
+    if (inQuotes && ch === '\\' && i + 1 < text.length) {
+      current += ch + text[i + 1];
+      i += 2;
+      continue;
+    }
+    if (ch === '"') inQuotes = !inQuotes;
+    if (!inQuotes) {
+      if (ch === '[') bracketDepth++;
+      else if (ch === ']') bracketDepth--;
+    }
+
+    if (!inQuotes && bracketDepth === 0 && text.slice(i, i + op.length) === op) {
       parts.push(current);
       current = '';
       i += op.length;
@@ -547,27 +598,36 @@ function findTrailingAttrBlock(stmt: string): number {
 // Extract node ID from a potentially attributed node reference
 // ---------------------------------------------------------------------------
 
-function extractNodeId(text: string): string | null {
-  const trimmed = text.trim();
-  // Node id: leading identifier characters before any [ or whitespace
-  const match = trimmed.match(/^"([^"]+)"|^([A-Za-z_][A-Za-z0-9_]*)/);
-  if (!match) return null;
-  return match[1] ?? match[2];
+interface DotId {
+  raw: string;
+  /** Quoted ids can't be keywords: `"node"` is a node, `node` is not */
+  quoted: boolean;
+  /** Characters of the input the id occupies */
+  length: number;
 }
 
-// ---------------------------------------------------------------------------
-// Parse inline node attributes from edge statement parts
-// ---------------------------------------------------------------------------
+// DOT ids: quoted strings, identifiers (letters, `_`, non-ASCII), or numerals
+const DOT_ID = /^(?:"((?:[^"\\]|\\[\s\S])*)"|([A-Za-z_\u0080-\uffff][A-Za-z0-9_\u0080-\uffff]*)|(-?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)))/;
 
-function parseNodeInlineAttrs(text: string, nodes: NodeRegistry): void {
-  const trimmed = text.trim();
-  const id = extractNodeId(trimmed);
-  if (!id) return;
+function extractNodeId(text: string): DotId | null {
+  const match = text.match(DOT_ID);
+  if (!match) return null;
+  if (match[1] !== undefined) {
+    // `\"` is the only escape in a DOT quoted id; `\<newline>` is a line continuation
+    const raw = match[1].replace(/\\\r?\n/g, '').replace(/\\"/g, '"');
+    return raw.length > 0 ? { raw, quoted: true, length: match[0].length } : null;
+  }
+  return { raw: match[2] ?? match[3], quoted: false, length: match[0].length };
+}
 
-  const afterId = trimmed.slice(trimmed.indexOf(id) + id.length).trim();
-  if (afterId.startsWith('[')) {
-    const [attrs] = extractAttrBlock(afterId);
+/** Apply a `[attrs]` block that follows a node id, if there is one */
+function applyInlineAttrs(afterId: string, id: string, nodes: NodeRegistry): void {
+  const rest = afterId.trim();
+  if (rest.startsWith('[')) {
+    const [attrs] = extractAttrBlock(rest);
     applyNodeAttrs(nodes, id, attrs);
+  } else {
+    nodes.ensure(id);
   }
 }
 
@@ -575,26 +635,27 @@ function parseNodeInlineAttrs(text: string, nodes: NodeRegistry): void {
 // Parse a node statement: nodeId [attrs]
 // ---------------------------------------------------------------------------
 
-function parseNodeStatement(
-  stmt: string,
-  nodes: NodeRegistry,
-  parentGroup?: Group,
-): void {
+const DOT_KEYWORDS = new Set(['graph', 'digraph', 'node', 'edge', 'strict', 'subgraph']);
+
+function parseNodeStatement(stmt: string, line: number, ctx: DotContext, parentGroup?: Group): void {
   const trimmed = stmt.replace(/;$/, '').trim();
-  const id = extractNodeId(trimmed);
-  if (!id) return;
-
-  // Skip DOT keywords
-  if (['graph', 'node', 'edge', 'strict', 'subgraph'].includes(id)) return;
-
-  const afterId = trimmed.slice(trimmed.indexOf(id) + id.length).trim();
-
-  if (afterId.startsWith('[')) {
-    const [attrs] = extractAttrBlock(afterId);
-    applyNodeAttrs(nodes, id, attrs);
-  } else {
-    nodes.ensure(id);
+  const dotId = extractNodeId(trimmed);
+  if (!dotId) {
+    ctx.errors.push({ message: `Could not parse DOT statement: "${trimmed.split('\n')[0]}"`, line });
+    return;
   }
+
+  // Unquoted keywords are never node ids
+  if (!dotId.quoted && DOT_KEYWORDS.has(dotId.raw.toLowerCase())) return;
+
+  const rest = trimmed.slice(dotId.length).trim();
+  if (rest.length > 0 && !rest.startsWith('[')) {
+    ctx.errors.push({ message: `Unexpected "${rest.split('\n')[0]}" after node "${dotId.raw}"`, line });
+    return;
+  }
+
+  const id = ctx.nodes.resolve(dotId.raw);
+  applyInlineAttrs(rest, id, ctx.nodes);
 
   if (parentGroup && !parentGroup.members.includes(id)) {
     parentGroup.members.push(id);
@@ -618,7 +679,7 @@ export function parseDot(input: string): ParseResult {
 
   // Match graph header: [strict] (digraph|graph) [name] { body }
   const headerMatch = cleaned.match(
-    /^\s*(?:strict\s+)?(digraph|graph)\s*(?:"[^"]*"|[A-Za-z_][A-Za-z0-9_]*)?\s*\{([\s\S]*)\}\s*$/
+    /^\s*(?:strict\s+)?(digraph|graph)\s*(?:"[^"]*"|[A-Za-z_][A-Za-z0-9_]*)?\s*\{([\s\S]*)\}\s*$/i
   );
 
   if (!headerMatch) {
@@ -626,30 +687,24 @@ export function parseDot(input: string): ParseResult {
     return { graph: { nodes: [], edges: [], groups: [], positions: [], styles: [] }, errors };
   }
 
-  const graphType = headerMatch[1];
-  const isDirected = graphType === 'digraph';
+  const isDirected = headerMatch[1].toLowerCase() === 'digraph';
   const body = headerMatch[2];
+  const bodyStart = cleaned.indexOf('{') + 1;
+  const bodyLine = 1 + (cleaned.slice(0, bodyStart).match(/\n/g) ?? []).length;
 
-  // Parse body statements
-  const statements = tokenizeStatements(body);
+  const ctx: DotContext = { nodes, edges, groups, isDirected, errors };
 
-  for (const stmt of statements) {
-    const trimmed = stmt.trim();
-    if (trimmed.length === 0) continue;
-
+  for (const stmt of tokenizeStatements(body, bodyLine)) {
     // Graph-level attributes: rankdir, label, etc.
-    const graphAttrMatch = trimmed.match(/^(rankdir)\s*=\s*"?([^";]*)"?\s*$/i);
+    const graphAttrMatch = stmt.text.match(/^(rankdir)\s*=\s*"?([^";]*)"?\s*$/i);
     if (graphAttrMatch) {
-      const key = graphAttrMatch[1].toLowerCase();
       const value = graphAttrMatch[2].trim().toUpperCase();
-      if (key === 'rankdir') {
-        const dirMap: Record<string, Direction> = { LR: 'LR', RL: 'RL', TB: 'TB', BT: 'BT' };
-        if (dirMap[value]) direction = dirMap[value];
-      }
+      const dirMap: Record<string, Direction> = { LR: 'LR', RL: 'RL', TB: 'TB', BT: 'BT' };
+      if (dirMap[value]) direction = dirMap[value];
       continue;
     }
 
-    parseStatement(trimmed, nodes, edges, groups, styles, isDirected, errors);
+    parseStatement(stmt, ctx);
   }
 
   const graph: Graph = {

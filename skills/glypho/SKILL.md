@@ -30,10 +30,12 @@ Sets auto-layout flow. Declare it at most once — a duplicate direction is a pa
 
 ```
 a                        // bare ID — ID becomes the label
-a:r                      // with shape
-a:r "Start"              // with label
-a:r "Start" #0af         // with color
+b:r                      // with shape
+c:r "Start"              // with label
+d:r "Start" #0af         // with color
 ```
+
+Each node ID is defined once per file; a second definition of the same ID is a parse error.
 
 **IDs** must start with a letter, then letters/digits/underscores/hyphens. Valid: `login`, `step_1`, `my-node`. Invalid: `1step`, `_x`.
 
@@ -101,12 +103,25 @@ Visual containers for nodes.
 
 **Flat (single line):**
 ```
-@auth { login mfa verify }
+login:r Login
+mfa:d "MFA?"
+verify:r Verify
+login>mfa>verify
 @auth "Authentication" { login mfa verify }
 ```
 
+The label is optional: `@auth { login mfa verify }` is the same group without a title.
+
 **Nested (multiline):**
 ```
+webapp:r "Web App"
+mobile:r Mobile
+gateway:h Gateway
+api:r API
+worker:r Worker
+webapp>gateway
+mobile>gateway
+gateway>api>worker
 @system "System" {
   @frontend { webapp mobile }
   @backend { api worker }
@@ -141,15 +156,18 @@ Three selector types:
 | `.class` | nodes in that class | `$.critical { fill:#fee stroke:#c00 }` |
 | `#id` | specific node | `$#login { fill:#0af }` |
 
-Properties are **space-separated** (not semicolons). The renderer applies exactly three properties: `fill`, `stroke` (hex colors only — `#f00` or `#ff0000`; named colors like `red` are ignored), and `stroke-width` (a number). Any other property parses without error but has no effect on output.
+Properties are **space-separated** (not semicolons). The renderer applies exactly three properties: `fill`, `stroke` (hex colors only — `#f00` or `#ff0000`; named colors like `red` are ignored), and `stroke-width` (a number such as `2` or `1.5`). Bare values may only use ASCII letters, digits and `. _ % , + -`; quote anything else (`data-note:"two words"`). Any other property parses without error but has no effect on output.
 
 ### Positioning
 
 Explicit placement (overrides auto-layout for that node):
 
 ```
+login:r Login
+home:r Home
+login>home
 login@100,200              // position only
-login@100,200^120x40       // position + size (width x height)
+home@300,200^120x40        // position + size (width x height)
 ```
 
 Coordinates are non-negative integers. Size requires position.
@@ -209,7 +227,10 @@ npx glypho info diagram.g
 npx glypho preview diagram.svg
 
 # Read from stdin
-echo 'a:r Hello\nb:c World\na>b' | npx glypho render - -o out.svg
+printf 'a:r Hello\nb:c World\na>b\n' | npx glypho render - -o out.svg
+
+# Stdin defaults to .g; use --from for Mermaid or DOT
+cat flow.mmd | npx glypho render --from mermaid -o flow.svg
 ```
 
 ### JavaScript / TypeScript API

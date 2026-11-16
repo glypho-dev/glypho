@@ -12,7 +12,7 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [20, 22]
+        node-version: [22, 24]
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -21,9 +21,14 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
           node-version: ${{ matrix.node-version }}
+          cache: npm
 
+      # package-lock.json must list every platform's optional binaries
+      # (rollup, esbuild, resvg). If npm ci fails on Linux with a missing
+      # native module, regenerate the lockfile from scratch:
+      #   rm -rf node_modules package-lock.json && npm install --package-lock-only
       - name: Install dependencies
-        run: rm -rf node_modules package-lock.json && npm install
+        run: npm ci
 
       - name: Build
         run: npm run build

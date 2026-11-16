@@ -1,6 +1,6 @@
 # Glypho - `.g` Format
 
-LLM-optimized graph notation format. ~20% token cost vs JSON Canvas.
+LLM-optimized graph notation format. ~17% token cost vs JSON Canvas.
 
 ## Commands
 
@@ -49,8 +49,9 @@ Monorepo uses npm workspaces.
 - `<GlyphoGraph graph={graph} />` — React component (SVG output, `onNodeClick`, `onEdgeClick`)
 - `GlyphoGraphProps`: `{ graph, width?, height?, padding?, className?, style?, onNodeClick?, onEdgeClick? }`
 - `computeLayout(graph): LayoutResult` — dagre-based auto-layout
-- Types: `LayoutNode`, `LayoutEdge`, `LayoutGroup`, `LayoutResult`, `Point`, `NodeStyle`
-- Utilities: `measureNode`, `measureText`, `resolveNodeStyle`, `resolveEdgeColor`
+- Types: `LayoutNode`, `LayoutEdge`, `LayoutGroup`, `LayoutResult`, `Point`, `EdgeLabelBox`, `NodeStyle`
+- Utilities: `measureNode`, `measureText`, `measureLine`, `measureEdgeLabel`, `wrapLabel`, `LINE_HEIGHT`, `MAX_LABEL_WIDTH`, `resolveNodeStyle`, `resolveEdgeColor`
+- The root entry re-exports everything in `/svg` (including `render`/`renderSvg`); `typesVersions` maps `/svg` types for `moduleResolution: node10`
 
 **Umbrella** (`glypho`):
 - Two entry points:
@@ -62,7 +63,9 @@ Monorepo uses npm workspaces.
 **CLI** (`@glypho/cli` → `glypho` command):
 - Subcommands: `check`, `parse`, `info`, `render`, `preview`, `to mermaid`, `from mermaid|dot`
 - All commands except `preview` accept `-` for stdin or read from stdin when piped (`preview` requires an existing `.svg` file)
-- `render` always writes a file (output path derived from input name unless `-o` given) — it never prints SVG to stdout
+- `render` always writes a file (output path derived from input name unless `-o` given) — it never prints SVG to stdout; the format follows the `-o` extension, missing directories are created, and it refuses to overwrite its input
+- Input format is detected by extension (`.mmd`/`.mermaid`, `.dot`/`.gv`); stdin is `.g` unless `--from mermaid|dot` is given
+- Expected failures throw `CliError` (`packages/cli/src/lib/errors.ts`); `index.ts` prints `error: <msg>` without a stack and exits 1
 - See `glypho --help` or README for full CLI reference
 
 ## Format Quick Reference

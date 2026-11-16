@@ -81,8 +81,17 @@ function applyStyleProperties(
 ): void {
   if (properties.fill) style.fill = normalizeHex(properties.fill);
   if (properties.stroke) style.stroke = normalizeHex(properties.stroke);
-  if (properties['stroke-width']) style.strokeWidth = parseFloat(properties['stroke-width']);
+  if (properties['stroke-width']) {
+    const width = parseFloat(properties['stroke-width']);
+    // Non-numeric or negative values keep the inherited width; huge values
+    // are clamped so a typo can't swallow the node in its own outline.
+    if (Number.isFinite(width) && width >= 0) {
+      style.strokeWidth = Math.min(width, MAX_STROKE_WIDTH);
+    }
+  }
 }
+
+const MAX_STROKE_WIDTH = 20;
 
 /** Resolve edge color: inline color or default */
 export function resolveEdgeColor(color?: string): string {

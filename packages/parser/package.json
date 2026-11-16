@@ -12,6 +12,9 @@
   },
   "keywords": ["graph", "diagram", "parser", "notation", "glypho", "ast"],
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": ["dist"],

@@ -2,6 +2,7 @@ import type {
   Graph, Node, Edge, Group, Style, Direction, Shape, EdgeOp,
   ParseError, ParseResult,
 } from './types.js';
+import { IdMap, decodeEntities, normalizeColor } from './import-utils.js';
 
 // ---------------------------------------------------------------------------
 // Direction mapping (Mermaid → Glyph)
@@ -149,8 +150,9 @@ function parseNodeExpr(text: string): NodeParseResult | null {
 
   if (rest.length === 0) return null;
 
-  // Node id: alphanumeric, underscore, hyphen
-  const idMatch = rest.match(/^[A-Za-z_][A-Za-z0-9_-]*/);
+  // Node id: alphanumerics/underscores, with single hyphens between them.
+  // A hyphen run is never part of the id, so `A-->B` and `C---D` split at the arrow.
+  const idMatch = rest.match(/^[A-Za-z0-9_]+(?:-[A-Za-z0-9_]+)*/);
   if (!idMatch) return null;
 
   const id = idMatch[0];
@@ -208,9 +210,8 @@ function findClosingDelimiter(text: string, open: string, close: string): number
 // ---------------------------------------------------------------------------
 
 function unescapeLabel(raw: string): string {
-  return raw
-    .replace(/&quot;/g, '"')
-    .replace(/<br\s*\/?>/gi, '\n');
+  // Line breaks first, so an escaped `&lt;br&gt;` stays literal text
+  return decodeEntities(raw.replace(/<br\s*\/?>/gi, '\n'));
 }
 
 // ---------------------------------------------------------------------------
@@ -242,6 +243,42 @@ function buildDelimiterMask(text: string): Uint8Array {
     if (inQuotes || depth > 0) mask[i] = 1;
   }
   return mask;
+}
+
+// Text-on-link forms: `A -- text --> B`, `A -- text --- B`, `A == text ==> B`,
+// `A -. text .-> B`. The opener must not itself be the start of a plain arrow.
+const TEXT_EDGE_PATTERNS: { re: RegExp; op: (close: string) => EdgeOp }[] = [
+  { re: /^--(?![->])\s*(.+?)\s*(-->|---)/, op: close => (close === '-->' ? '>' : '--') },
+  { re: /^==(?![=>])\s*(.+?)\s*(==>)/, op: () => '=' },
+  { re: /^-\.(?!->)\s*(.+?)\s*(\.->)/, op: () => '~' },
+];
+
+function matchTextEdge(text: string, start: number): EdgeFind | null {
+  const rest = text.slice(start);
+  for (const { re, op } of TEXT_EDGE_PATTERNS) {
+    const m = rest.match(re);
+    if (!m) continue;
+    let label = m[1];
+    const quoted = label.match(/^"(.*)"$/);
+    if (quoted) label = quoted[1];
+    return {
+      op: op(m[2]),
+      token: m[2],
+      index: start,
+      label: unescapeLabel(label),
+      totalLength: m[0].length,
+    };
+  }
+  return null;
+}
+
+/** True when the line has a text-on-link edge outside delimiters */
+function hasTextEdge(text: string, mask: Uint8Array): boolean {
+  for (let i = 0; i < text.length - 1; i++) {
+    if (mask[i]) continue;
+    if ((text[i] === '-' || text[i] === '=') && matchTextEdge(text, i)) return true;
+  }
+  return false;
 }
 
 function findNextEdge(text: string, start: number, delimiterMask?: Uint8Array): EdgeFind | null {
@@ -305,6 +342,16 @@ function parseStyleProps(propsStr: string): Record<string, string> {
 class NodeRegistry {
   private map = new Map<string, Node>();
   private order: string[] = [];
+  private ids = new IdMap();
+  /** Original Mermaid id for nodes whose id had to be rewritten, used as the label if none is given */
+  private fallbackLabels = new Map<string, string>();
+
+  /** Map a Mermaid id to its `.g` id */
+  resolve(raw: string): string {
+    const id = this.ids.get(raw);
+    if (id !== raw) this.fallbackLabels.set(id, raw);
+    return id;
+  }
 
   /** Register or update a node. Shape/label are set only on first definition. */
   ensure(id: string, shape?: Shape, label?: string, line?: number): void {
@@ -344,7 +391,12 @@ class NodeRegistry {
   }
 
   toArray(): Node[] {
-    return this.order.map(id => this.map.get(id)!);
+    return this.order.map(id => {
+      const node = this.map.get(id)!;
+      const fallback = this.fallbackLabels.get(id);
+      if (fallback !== undefined && node.label === undefined) node.label = fallback;
+      return node;
+    });
   }
 }
 
@@ -364,6 +416,8 @@ function shapeSelectorFromClassName(className: string): string | null {
 export function parseMermaid(input: string): ParseResult {
   const errors: ParseError[] = [];
   const nodes = new NodeRegistry();
+  const groupIds = new IdMap();
+  const classIds = new IdMap();
   const edges: Edge[] = [];
   const groups: Group[] = [];
   const styles: Style[] = [];
@@ -411,8 +465,10 @@ export function parseMermaid(input: string): ParseResult {
       /^subgraph\s+([A-Za-z_][A-Za-z0-9_-]*)(?:\s+\["([^"]*)"\]|\s+\[([^\]]*)\])?\s*$/
     );
     if (subgraphMatch) {
-      const id = subgraphMatch[1];
-      const label = subgraphMatch[2] ?? subgraphMatch[3] ?? undefined;
+      const rawId = subgraphMatch[1];
+      const id = groupIds.get(rawId);
+      const rawLabel = subgraphMatch[2] ?? subgraphMatch[3] ?? undefined;
+      const label = rawLabel !== undefined ? unescapeLabel(rawLabel) : id !== rawId ? rawId : undefined;
       const group: Group = { id, members: [], line: originalLine };
       if (label) group.label = label;
       groupStack.push(group);
@@ -424,8 +480,10 @@ export function parseMermaid(input: string): ParseResult {
       /^subgraph\s+([A-Za-z_][A-Za-z0-9_-]*)\s*$/
     );
     if (subgraphBareMatch && !subgraphMatch) {
-      const id = subgraphBareMatch[1];
+      const rawId = subgraphBareMatch[1];
+      const id = groupIds.get(rawId);
       const group: Group = { id, members: [], line: originalLine };
+      if (id !== rawId) group.label = rawId;
       groupStack.push(group);
       continue;
     }
@@ -433,7 +491,9 @@ export function parseMermaid(input: string): ParseResult {
     // -----------------------------------------------------------------------
     // 3. End (close subgraph)
     // -----------------------------------------------------------------------
-    if (/^end\s*$/i.test(text)) {
+    // Case-sensitive: Mermaid only treats lowercase `end` as the keyword, and
+    // `End` / `END` are the documented way to name a node "end"
+    if (/^end\s*$/.test(text)) {
       if (groupStack.length > 0) {
         const completed = groupStack.pop()!;
         if (groupStack.length > 0) {
@@ -469,14 +529,15 @@ export function parseMermaid(input: string): ParseResult {
     // -----------------------------------------------------------------------
     const styleMatch = text.match(/^style\s+([A-Za-z_][A-Za-z0-9_-]*)\s+(.+)$/);
     if (styleMatch) {
-      const nodeId = styleMatch[1];
+      const nodeId = nodes.resolve(styleMatch[1]);
       const props = parseStyleProps(styleMatch[2]);
-      // If the only property is "fill", apply as node color
+      // If the only property is a hex-convertible "fill", apply as node color
       const propKeys = Object.keys(props);
-      if (propKeys.length === 1 && propKeys[0] === 'fill') {
+      const fill = propKeys.length === 1 && propKeys[0] === 'fill' ? normalizeColor(props['fill']) : undefined;
+      if (fill) {
         nodes.ensure(nodeId, undefined, undefined, originalLine);
         const node = nodes.get(nodeId);
-        if (node) node.color = props['fill'];
+        if (node) node.color = fill;
       } else {
         styles.push({
           selector: `#${nodeId}`,
@@ -494,7 +555,7 @@ export function parseMermaid(input: string): ParseResult {
     if (classDefMatch) {
       const className = classDefMatch[1];
       const props = parseStyleProps(classDefMatch[2]);
-      const selector = shapeSelectorFromClassName(className) ?? `.${className}`;
+      const selector = shapeSelectorFromClassName(className) ?? `.${classIds.get(className)}`;
       styles.push({
         selector,
         properties: props,
@@ -512,11 +573,12 @@ export function parseMermaid(input: string): ParseResult {
     if (classMatch) {
       const nodeIds = classMatch[1].split(/\s*,\s*/);
       const classNames = classMatch[2].split(/\s*,\s*/);
-      for (const nodeId of nodeIds) {
+      for (const rawNodeId of nodeIds) {
+        const nodeId = nodes.resolve(rawNodeId);
         nodes.ensure(nodeId, undefined, undefined, originalLine);
         for (const className of classNames) {
           if (shapeSelectorFromClassName(className)) continue;
-          nodes.addClass(nodeId, className, originalLine);
+          nodes.addClass(nodeId, classIds.get(className), originalLine);
         }
       }
       continue;
@@ -528,7 +590,7 @@ export function parseMermaid(input: string): ParseResult {
     const mask = buildDelimiterMask(text);
     const firstEdge = findNextEdge(text, 0, mask);
 
-    if (firstEdge) {
+    if (firstEdge || hasTextEdge(text, mask)) {
       parseEdgeLine(text, originalLine, nodes, edges, groupStack, errors);
     } else {
       // Standalone node definition
@@ -592,16 +654,16 @@ function parseEdgeLine(
     return;
   }
 
-  let sourceNode = sourceResult;
-  nodes.ensure(sourceNode.id, sourceNode.shape, sourceNode.label, line);
-  addNodeToCurrentGroup(groupStack, sourceNode.id);
-  cursor += sourceNode.consumed;
+  let sourceId = nodes.resolve(sourceResult.id);
+  nodes.ensure(sourceId, sourceResult.shape, sourceResult.label, line);
+  addNodeToCurrentGroup(groupStack, sourceId);
+  cursor += sourceResult.consumed;
 
   while (cursor < text.length) {
     while (cursor < text.length && /\s/.test(text[cursor])) cursor++;
     if (cursor >= text.length) return;
 
-    const edgeFind = findNextEdge(text, cursor, mask);
+    const edgeFind = matchTextEdge(text, cursor) ?? findNextEdge(text, cursor, mask);
     if (!edgeFind || edgeFind.index !== cursor) {
       errors.push({
         message: `Unexpected token near position ${cursor}: "${text.slice(cursor, cursor + 10)}"`,
@@ -624,12 +686,13 @@ function parseEdgeLine(
       return;
     }
 
-    nodes.ensure(targetResult.id, targetResult.shape, targetResult.label, line);
-    addNodeToCurrentGroup(groupStack, targetResult.id);
+    const targetId = nodes.resolve(targetResult.id);
+    nodes.ensure(targetId, targetResult.shape, targetResult.label, line);
+    addNodeToCurrentGroup(groupStack, targetId);
 
     const edge: Edge = {
-      from: sourceNode.id,
-      to: targetResult.id,
+      from: sourceId,
+      to: targetId,
       op: edgeFind.op,
       line,
     };
@@ -637,7 +700,7 @@ function parseEdgeLine(
     edges.push(edge);
 
     cursor += targetResult.consumed;
-    sourceNode = targetResult;
+    sourceId = targetId;
   }
 }
 
@@ -669,8 +732,9 @@ function parseStandaloneNode(
     return;
   }
 
-  nodes.ensure(result.id, result.shape, result.label, line);
+  const id = nodes.resolve(result.id);
+  nodes.ensure(id, result.shape, result.label, line);
 
   // Add to current subgraph
-  addNodeToCurrentGroup(groupStack, result.id);
+  addNodeToCurrentGroup(groupStack, id);
 }

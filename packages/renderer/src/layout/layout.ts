@@ -1,8 +1,9 @@
 import dagre from '@dagrejs/dagre';
 import type { Graph, Group, Shape } from '@glypho/parser';
 import { flattenGroups } from '@glypho/parser';
-import { measureNode, measureText } from './sizing.js';
-import type { LayoutResult, LayoutNode, LayoutEdge, LayoutGroup, Point } from './types.js';
+import { pathMidpoint } from '../edges/paths.js';
+import { measureEdgeLabel, measureNode, measureText } from './sizing.js';
+import type { LayoutResult, LayoutNode, LayoutEdge, LayoutGroup, Point, EdgeLabelBox } from './types.js';
 
 const DEFAULT_NODE_SEP = 60;
 const DEFAULT_RANK_SEP = 80;
@@ -15,6 +16,23 @@ const GROUP_LABEL_HEIGHT = 24;
 const MAX_RANK_GAP = 104;
 const EMPTY_GROUP_MIN_WIDTH = 96;
 const EMPTY_GROUP_MIN_HEIGHT = GROUP_LABEL_HEIGHT + GROUP_PADDING * 2;
+// Space kept between an edge label and the rank on either side of it.
+const EDGE_LABEL_CLEARANCE = 12;
+// How far a fallback self-loop bulges past the node's right edge.
+const SELF_LOOP_REACH = 28;
+
+function subtreeHasNodes(group: Group, nodeIds: { has(id: string): boolean }): boolean {
+  return group.members.some(id => nodeIds.has(id))
+    || (group.children ?? []).some(child => subtreeHasNodes(child, nodeIds));
+}
+
+function emptyGroupSize(group: Group): { width: number; height: number } {
+  const { width: labelWidth } = measureText(group.label ?? group.id);
+  return {
+    width: Math.max(EMPTY_GROUP_MIN_WIDTH, labelWidth + GROUP_PADDING * 2),
+    height: EMPTY_GROUP_MIN_HEIGHT,
+  };
+}
 
 /**
  * Clip a ray from node center toward `target` so it stops at the actual
@@ -149,40 +167,111 @@ interface Rect {
   height: number;
 }
 
+/** Name for the dagre multigraph edge of graph.edges[index] */
+function edgeName(index: number): string {
+  return `e${index}`;
+}
+
+/** Top-left rect of a dagre node/edge label (dagre reports centers) */
+function dagreRect(label: dagre.Node | dagre.GraphEdge | undefined): Rect | undefined {
+  if (!label) return undefined;
+  const { x, y, width, height } = label as { x?: number; y?: number; width?: number; height?: number };
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return undefined;
+  const w = width ?? 0;
+  const h = height ?? 0;
+  return { x: x! - w / 2, y: y! - h / 2, width: w, height: h };
+}
+
+/**
+ * Loop for a self-edge whose node dagre did not place (explicit position or
+ * post-dagre compaction): out of the right side and back in. The first and
+ * last points are node centers; the caller clips them to the shape border.
+ */
+function selfLoopPoints(node: LayoutNode): Point[] {
+  const cx = node.x + node.width / 2;
+  const cy = node.y + node.height / 2;
+  const outX = node.x + node.width + SELF_LOOP_REACH;
+  const spread = Math.max(node.height / 4, 8);
+  return [
+    { x: cx, y: cy },
+    { x: outX, y: cy - spread },
+    { x: outX, y: cy + spread },
+    { x: cx, y: cy },
+  ];
+}
+
 function computeGroupLayouts(
   groups: Group[],
   nodeMap: ReadonlyMap<string, LayoutNode>,
-  clusterRects: ReadonlyMap<Group, Rect>,
+  placeholderRects: ReadonlyMap<Group, Rect>,
 ): LayoutGroup[] {
   const layoutGroups: LayoutGroup[] = [];
   const emptyGroups: number[] = [];
 
+  /**
+   * Lay out a tree with no nodes at a local origin: nested empty groups sit
+   * side by side under the parent's label strip. Pushes every group in the
+   * tree and returns the root.
+   */
+  function layoutEmptyTree(group: Group, depth: number, originX: number, originY: number): LayoutGroup {
+    const minSize = emptyGroupSize(group);
+    const children = group.children ?? [];
+    let cursorX = originX + GROUP_PADDING;
+    let tallestChild = 0;
+    for (const child of children) {
+      const childLayout = layoutEmptyTree(child, depth + 1, cursorX, originY + GROUP_LABEL_HEIGHT + GROUP_PADDING);
+      cursorX += childLayout.width + GROUP_PADDING;
+      tallestChild = Math.max(tallestChild, childLayout.height);
+    }
+    const layoutGroup: LayoutGroup = {
+      group,
+      x: originX,
+      y: originY,
+      width: children.length > 0 ? Math.max(minSize.width, cursorX - originX) : minSize.width,
+      height: children.length > 0
+        ? GROUP_LABEL_HEIGHT + GROUP_PADDING * 2 + tallestChild
+        : minSize.height,
+      depth,
+    };
+    layoutGroups.push(layoutGroup);
+    return layoutGroup;
+  }
+
+  function hasPlaceholder(group: Group): boolean {
+    return placeholderRects.has(group) || (group.children ?? []).some(hasPlaceholder);
+  }
+
   function visitGroup(group: Group, depth: number): LayoutGroup {
     const childLayouts = (group.children ?? []).map(child => visitGroup(child, depth + 1));
+
+    // Nested empty groups were laid out by dagre as placeholder nodes inside
+    // their parent's cluster, so they already have a collision-free slot.
+    const placeholder = placeholderRects.get(group);
+    if (placeholder) {
+      const layoutGroup: LayoutGroup = { group, ...placeholder, depth };
+      layoutGroups.push(layoutGroup);
+      return layoutGroup;
+    }
+
     const memberNodes = group.members
       .map(id => nodeMap.get(id))
       .filter((node): node is LayoutNode => node != null);
-    const clusterRect = clusterRects.get(group);
 
     const contentMinX = Math.min(
       ...memberNodes.map(node => node.x),
       ...childLayouts.map(child => child.x),
-      ...(clusterRect ? [clusterRect.x + GROUP_PADDING] : []),
     );
     const contentMinY = Math.min(
       ...memberNodes.map(node => node.y),
       ...childLayouts.map(child => child.y),
-      ...(clusterRect ? [clusterRect.y + GROUP_PADDING + GROUP_LABEL_HEIGHT] : []),
     );
     const contentMaxX = Math.max(
       ...memberNodes.map(node => node.x + node.width),
       ...childLayouts.map(child => child.x + child.width),
-      ...(clusterRect ? [clusterRect.x + clusterRect.width - GROUP_PADDING] : []),
     );
     const contentMaxY = Math.max(
       ...memberNodes.map(node => node.y + node.height),
       ...childLayouts.map(child => child.y + child.height),
-      ...(clusterRect ? [clusterRect.y + clusterRect.height - GROUP_PADDING] : []),
     );
 
     const hasContent = Number.isFinite(contentMinX) && Number.isFinite(contentMinY)
@@ -199,12 +288,9 @@ function computeGroupLayouts(
       width = contentMaxX - contentMinX + GROUP_PADDING * 2;
       height = contentMaxY - contentMinY + GROUP_PADDING * 2 + GROUP_LABEL_HEIGHT;
     } else {
-      const label = group.label ?? group.id;
-      const { width: labelWidth } = measureText(label);
-      width = Math.max(EMPTY_GROUP_MIN_WIDTH, labelWidth + GROUP_PADDING * 2);
-      height = EMPTY_GROUP_MIN_HEIGHT;
-      // Placed after the main pass, below the occupied content — a (0,0)
-      // default would sit on top of whatever the layout put there.
+      // Not expected (node-less trees take layoutEmptyTree, nested empty
+      // leaves get placeholders), but if it happens, stack it like one.
+      ({ width, height } = emptyGroupSize(group));
       x = 0;
       y = 0;
       emptyGroups.push(layoutGroups.length);
@@ -215,26 +301,41 @@ function computeGroupLayouts(
     return layoutGroup;
   }
 
+  const emptyTrees: LayoutGroup[][] = [];
   for (const group of groups) {
-    visitGroup(group, 0);
+    if (subtreeHasNodes(group, nodeMap) || hasPlaceholder(group)) {
+      visitGroup(group, 0);
+    } else {
+      const start = layoutGroups.length;
+      layoutEmptyTree(group, 0, 0, 0);
+      emptyTrees.push(layoutGroups.slice(start));
+    }
+  }
+  for (const index of emptyGroups) {
+    emptyTrees.push([layoutGroups[index]]);
   }
 
-  // Stack empty top-level groups below everything else.
-  if (emptyGroups.length > 0) {
+  // Stack node-less trees below everything else — at their local (0,0)
+  // origin they would sit on top of whatever the layout put there.
+  if (emptyTrees.length > 0) {
+    const emptySet = new Set(emptyTrees.flat());
     const occupied = [
       ...Array.from(nodeMap.values()),
-      ...layoutGroups.filter((_, index) => !emptyGroups.includes(index)),
+      ...layoutGroups.filter(layoutGroup => !emptySet.has(layoutGroup)),
     ];
     let cursorX = occupied.length > 0 ? Math.min(...occupied.map(item => item.x)) : 0;
     const baseY = occupied.length > 0
       ? Math.max(...occupied.map(item => item.y + item.height)) + GROUP_PADDING * 2
       : 0;
-    for (const index of emptyGroups) {
-      const empty = layoutGroups[index];
-      if (empty.depth > 0) continue; // nested empties stay with their parent
-      empty.x = cursorX;
-      empty.y = baseY;
-      cursorX += empty.width + GROUP_PADDING;
+    for (const tree of emptyTrees) {
+      const root = tree[tree.length - 1];
+      const dx = cursorX - root.x;
+      const dy = baseY - root.y;
+      for (const layoutGroup of tree) {
+        layoutGroup.x += dx;
+        layoutGroup.y += dy;
+      }
+      cursorX += root.width + GROUP_PADDING;
     }
   }
 
@@ -457,8 +558,29 @@ export function computeLayout(graph: Graph): LayoutResult {
   const parentAssignment = assignClusterParents(graph.groups, nodeIds, explicitPositionIds);
   const assignedGroups = new Set(parentAssignment.values());
 
+  // A nested group with no members and no children still needs a slot
+  // inside its parent. It becomes a fixed-size placeholder node in the
+  // parent's cluster, so dagre keeps it clear of everything else instead of
+  // it being dropped at the origin and dragging the parent box along.
+  const placeholderKeys = new Map<Group, string>();
+  const placeholderParents = new Map<Group, Group>();
+  // Trees with no nodes at all are left to computeGroupLayouts, which stacks
+  // them below the diagram without disturbing the node layout.
+  function findPlaceholders(group: Group, parent: Group | undefined): void {
+    const children = group.children ?? [];
+    if (parent && children.length === 0 && !group.members.some(id => nodeIds.has(id))) {
+      placeholderKeys.set(group, `__glypho_empty_group_${placeholderKeys.size}__`);
+      placeholderParents.set(group, parent);
+    }
+    for (const child of children) findPlaceholders(child, group);
+  }
+  for (const group of graph.groups) {
+    if (subtreeHasNodes(group, nodeIds)) findPlaceholders(group, undefined);
+  }
+
   const clusterGroups = new Set<Group>();
   function markClusters(group: Group): boolean {
+    if (placeholderKeys.has(group)) return true; // occupies a node in its parent's cluster
     let hasContent = assignedGroups.has(group);
     for (const child of group.children ?? []) {
       if (markClusters(child)) hasContent = true;
@@ -470,7 +592,9 @@ export function computeLayout(graph: Graph): LayoutResult {
     markClusters(group);
   }
 
-  const g = new dagre.graphlib.Graph({ compound: clusterGroups.size > 0 });
+  // Multigraph so parallel edges (`a>b yes` + `a>b no`) stay distinct and
+  // each gets its own route and label slot.
+  const g = new dagre.graphlib.Graph({ compound: clusterGroups.size > 0, multigraph: true });
   g.setGraph({
     rankdir: graph.direction ?? 'TB',
     nodesep: DEFAULT_NODE_SEP,
@@ -513,14 +637,26 @@ export function computeLayout(graph: Graph): LayoutResult {
       const key = clusterKeys.get(group);
       if (key) g.setParent(id, key);
     }
-  }
-
-  // Add edges
-  for (const edge of graph.edges) {
-    if (g.hasNode(edge.from) && g.hasNode(edge.to)) {
-      g.setEdge(edge.from, edge.to);
+    for (const [group, key] of placeholderKeys) {
+      g.setNode(key, emptyGroupSize(group));
+      const parentKey = clusterKeys.get(placeholderParents.get(group)!);
+      if (parentKey) g.setParent(key, parentKey);
     }
   }
+
+  // Add edges. Labels are sized so dagre reserves room for them (it gives
+  // each labelled edge a dummy node of that size at the edge's midpoint).
+  const edgeLabels = graph.edges.map(edge => (edge.label ? measureEdgeLabel(edge.label) : undefined));
+  graph.edges.forEach((edge, index) => {
+    if (!g.hasNode(edge.from) || !g.hasNode(edge.to)) return;
+    const label = edgeLabels[index];
+    g.setEdge(
+      edge.from,
+      edge.to,
+      label ? { width: label.width, height: label.height, labelpos: 'c' } : {},
+      edgeName(index),
+    );
+  });
 
   // Run layout
   dagre.layout(g);
@@ -556,11 +692,58 @@ export function computeLayout(graph: Graph): LayoutResult {
   // Squash the dead space introduced by cluster border ranks, on both axes.
   // The remap is shared by nodes, edge control points, and cluster
   // rectangles so the geometry stays consistent.
+  // Placeholder slots are boxes like nodes: compression must keep them.
+  const reservedRects: Rect[] = [];
+  for (const key of placeholderKeys.values()) {
+    const rect = dagreRect(g.node(key));
+    if (rect) reservedRects.push(rect);
+  }
+  // Edge-label slots sit inside rank gaps. They are not bands of their own
+  // (that would keep a full gap on each side of every label); instead the
+  // gap holding a label keeps room for it.
+  const labelRects: Rect[] = [];
+  graph.edges.forEach((edge, index) => {
+    if (!edgeLabels[index] || !g.hasNode(edge.from) || !g.hasNode(edge.to)) return;
+    const rect = dagreRect(g.edge(edge.from, edge.to, edgeName(index)));
+    if (rect) labelRects.push(rect);
+  });
+
   let mapX: (value: number) => number = value => value;
   let mapY: (value: number) => number = value => value;
+  // Labels only need room along the rank axis, where they sit between ranks.
+  // Across it they are just boxes that must not be squeezed.
+  const rankAxisIsX = graph.direction === 'LR' || graph.direction === 'RL';
+  const labelSpans = (axisX: boolean) => labelRects.map(rect => (axisX
+    ? { center: rect.x + rect.width / 2, extent: rect.width }
+    : { center: rect.y + rect.height / 2, extent: rect.height }));
   // Explicitly positioned nodes keep absolute coordinates, so shifting the
   // auto-laid content around them could create collisions — leave graphs
   // that mix pinned and auto nodes uncompressed.
+  if (clusterKeys.size === 0 && labelRects.length > 0 && explicitPositionIds.size === 0) {
+    // Flat graphs: dagre widens every labelled rank gap by the label's full
+    // extent. Pull those gaps back to the plain ranksep whenever the label fits.
+    const labels = labelSpans(rankAxisIsX);
+    const rects: Rect[] = [...layoutNodes, ...reservedRects];
+    const map = buildAxisCompressionMap(
+      rects.map(rect => (rankAxisIsX
+        ? [rect.x, rect.x + rect.width]
+        : [rect.y, rect.y + rect.height]) as [number, number]),
+      (gapStart, gapEnd) => {
+        let labelNeed = 0;
+        for (const label of labels) {
+          if (label.center > gapStart && label.center < gapEnd) {
+            labelNeed = Math.max(labelNeed, label.extent + EDGE_LABEL_CLEARANCE * 2);
+          }
+        }
+        return Math.max(DEFAULT_RANK_SEP, labelNeed);
+      },
+    );
+    if (rankAxisIsX) mapX = map; else mapY = map;
+    for (const node of layoutNodes) {
+      node.x = mapX(node.x);
+      node.y = mapY(node.y);
+    }
+  }
   if (clusterKeys.size > 0 && explicitPositionIds.size === 0) {
     // Cluster border positions (pre-compression coordinates). A gap crossed
     // by group-box edges must keep room for each border it contains: top
@@ -579,20 +762,36 @@ export function computeLayout(graph: Graph): LayoutResult {
       startsY.push((clusterNode.y as number) - halfH);
       endsY.push((clusterNode.y as number) + halfH);
     }
-    const makeGapBudget = (starts: number[], ends: number[], startCost: number) =>
+    const makeGapBudget = (
+      starts: number[],
+      ends: number[],
+      startCost: number,
+      labels: Array<{ center: number; extent: number }>,
+    ) =>
       (gapStart: number, gapEnd: number): number => {
         let needed = 0;
         for (const s of starts) if (s > gapStart && s < gapEnd) needed += startCost;
         for (const e of ends) if (e > gapStart && e < gapEnd) needed += GROUP_PADDING;
-        return Math.max(MAX_RANK_GAP, needed + 32);
+        // Labels in one gap share a rank, so the widest one sets the room.
+        let labelNeed = 0;
+        for (const label of labels) {
+          if (label.center > gapStart && label.center < gapEnd) {
+            labelNeed = Math.max(labelNeed, label.extent + EDGE_LABEL_CLEARANCE * 2);
+          }
+        }
+        // The label's own clearance stands in for the daylight margin.
+        return Math.max(MAX_RANK_GAP, needed + (labelNeed > 0 ? labelNeed : 32));
       };
+    const occupiedRects: Rect[] = [...layoutNodes, ...reservedRects];
+    const occupiedX = rankAxisIsX ? occupiedRects : [...occupiedRects, ...labelRects];
+    const occupiedY = rankAxisIsX ? [...occupiedRects, ...labelRects] : occupiedRects;
     mapX = buildAxisCompressionMap(
-      layoutNodes.map(node => [node.x, node.x + node.width] as [number, number]),
-      makeGapBudget(startsX, endsX, GROUP_PADDING),
+      occupiedX.map(rect => [rect.x, rect.x + rect.width] as [number, number]),
+      makeGapBudget(startsX, endsX, GROUP_PADDING, rankAxisIsX ? labelSpans(true) : []),
     );
     mapY = buildAxisCompressionMap(
-      layoutNodes.map(node => [node.y, node.y + node.height] as [number, number]),
-      makeGapBudget(startsY, endsY, GROUP_PADDING + GROUP_LABEL_HEIGHT),
+      occupiedY.map(rect => [rect.y, rect.y + rect.height] as [number, number]),
+      makeGapBudget(startsY, endsY, GROUP_PADDING + GROUP_LABEL_HEIGHT, rankAxisIsX ? [] : labelSpans(false)),
     );
     for (const node of layoutNodes) {
       node.x = mapX(node.x);
@@ -604,12 +803,12 @@ export function computeLayout(graph: Graph): LayoutResult {
 
   // Extract edge points.
   const layoutEdges: LayoutEdge[] = [];
-  for (const edge of graph.edges) {
+  graph.edges.forEach((edge, index) => {
     const fromNode = nodeMap.get(edge.from);
     const toNode = nodeMap.get(edge.to);
-    if (!fromNode || !toNode) continue;
+    if (!fromNode || !toNode) return;
 
-    const dagreEdge = g.edge(edge.from, edge.to);
+    const dagreEdge = g.edge(edge.from, edge.to, edgeName(index));
     let points: Point[];
 
     const fromCenter: Point = { x: fromNode.x + fromNode.width / 2, y: fromNode.y + fromNode.height / 2 };
@@ -617,18 +816,19 @@ export function computeLayout(graph: Graph): LayoutResult {
 
     // Explicit positions and post-dagre compaction override dagre's placement,
     // so its routed control points are stale for those endpoints. Fall back to
-    // a direct segment.
-    if (
-      dagreEdge?.points
+    // a direct segment (or a loop, for self-edges).
+    const routed = Boolean(dagreEdge?.points)
       && !posMap.has(edge.from)
       && !posMap.has(edge.to)
       && !compactedNodeIds.has(edge.from)
-      && !compactedNodeIds.has(edge.to)
-    ) {
+      && !compactedNodeIds.has(edge.to);
+    if (routed) {
       points = (dagreEdge.points as Array<{ x: number; y: number }>).map(p => ({
         x: mapX(p.x),
         y: mapY(p.y),
       }));
+    } else if (edge.from === edge.to) {
+      points = selfLoopPoints(fromNode);
     } else {
       points = [{ ...fromCenter }, { ...toCenter }];
     }
@@ -640,15 +840,45 @@ export function computeLayout(graph: Graph): LayoutResult {
     const targetDir = points.length > 2 ? points[points.length - 2] : fromCenter;
     points[points.length - 1] = clipToShapeBorder(toCenter, targetDir, toNode, toNode.node.shape);
 
-    layoutEdges.push({ edge, points });
-  }
+    const layoutEdge: LayoutEdge = { edge, points };
+    const label = edgeLabels[index];
+    if (label) {
+      let center: Point;
+      if (routed && Number.isFinite(dagreEdge.x) && Number.isFinite(dagreEdge.y)) {
+        center = { x: mapX(dagreEdge.x as number), y: mapY(dagreEdge.y as number) };
+      } else if (edge.from === edge.to) {
+        // Beside the loop rather than on top of it
+        center = {
+          x: fromNode.x + fromNode.width + SELF_LOOP_REACH + 4 + label.width / 2,
+          y: fromNode.y + fromNode.height / 2,
+        };
+      } else {
+        center = pathMidpoint(points);
+      }
+      const labelBox: EdgeLabelBox = { ...center, ...label };
+      layoutEdge.labelBox = labelBox;
+    }
+    layoutEdges.push(layoutEdge);
+  });
 
   // Group rectangles come from the padded bounding box of members and child
   // groups. Dagre's own cluster rectangles are deliberately not used: their
   // border ranks extend far past the content, inflating boxes with dead
   // space. Compound placement plus gap compression already guarantee that
   // non-members sit at least a band gap away, so snug boxes stay disjoint.
-  const layoutGroups = computeGroupLayouts(graph.groups, nodeMap, new Map());
+  const placeholderRects = new Map<Group, Rect>();
+  for (const [group, key] of placeholderKeys) {
+    const rect = dagreRect(g.node(key));
+    if (rect) {
+      placeholderRects.set(group, {
+        x: mapX(rect.x),
+        y: mapY(rect.y),
+        width: rect.width,
+        height: rect.height,
+      });
+    }
+  }
+  const layoutGroups = computeGroupLayouts(graph.groups, nodeMap, placeholderRects);
 
   // Compute total bounds
   const allX = [

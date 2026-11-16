@@ -2,7 +2,7 @@ import type { Graph, ParseError } from '@glypho/parser';
 import { parse } from '@glypho/parser';
 import { computeLayout } from '../layout/layout.js';
 import { computeViewBox } from '../layout/viewbox.js';
-import { buildMarkerDefs } from './markers.js';
+import { buildMarkerDefs, hashString, sanitizeIdPrefix } from './markers.js';
 import { resolveEdgeColor } from '../styles/resolve.js';
 import { renderGroup } from './groups.js';
 import { renderEdgePath, renderEdgeLabel } from './edges.js';
@@ -12,10 +12,19 @@ export interface RenderSvgOptions {
   width?: number;
   height?: number;
   padding?: number;
+  /**
+   * Namespace for the SVG's internal IDs (arrowhead markers), so several
+   * diagrams can be inlined into one HTML page without their `url(#…)`
+   * references resolving to each other's markers. Characters outside
+   * [A-Za-z0-9_-] are dropped. Defaults to a hash of the graph, which keeps
+   * output deterministic while giving different graphs different IDs.
+   */
+  idPrefix?: string;
 }
 
 export function renderSvg(graph: Graph, options: RenderSvgOptions = {}): string {
   const { width, height, padding = 40 } = options;
+  const markerPrefix = sanitizeIdPrefix(options.idPrefix ?? `glypho-${hashString(JSON.stringify(graph))}`);
   const layout = computeLayout(graph);
 
   const viewBox = computeViewBox(layout, padding);
@@ -24,7 +33,7 @@ export function renderSvg(graph: Graph, options: RenderSvgOptions = {}): string 
   const heightAttr = height != null ? ` height="${height}"` : '';
 
   const edgeColors = layout.edges.map(e => resolveEdgeColor(e.edge.color));
-  const { defs, suffixMap } = buildMarkerDefs(edgeColors);
+  const { defs, suffixMap } = buildMarkerDefs(edgeColors, markerPrefix);
   const parts: string[] = [];
   parts.push(`<svg viewBox="${viewBox}"${widthAttr}${heightAttr} style="max-width:100%" xmlns="http://www.w3.org/2000/svg">`);
   parts.push(defs);
@@ -33,7 +42,7 @@ export function renderSvg(graph: Graph, options: RenderSvgOptions = {}): string 
     parts.push(renderGroup(g));
   }
   for (const e of layout.edges) {
-    parts.push(renderEdgePath(e, suffixMap));
+    parts.push(renderEdgePath(e, suffixMap, markerPrefix));
   }
   for (const n of layout.nodes) {
     parts.push(renderNode(n, graph.styles));

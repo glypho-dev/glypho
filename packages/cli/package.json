@@ -12,6 +12,9 @@
   },
   "keywords": ["graph", "diagram", "cli", "glypho", "mermaid", "dot", "converter"],
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "bin": {
     "glypho": "dist/index.js"
   },

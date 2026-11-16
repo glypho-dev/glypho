@@ -91,4 +91,58 @@ describe('GlyphoGraph', () => {
     node?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(clicks).toEqual(['a']);
   });
+
+  it('gives each instance its own marker IDs', () => {
+    const graph = makeGraph({
+      nodes: [{ id: 'a' }, { id: 'b' }],
+      edges: [{ from: 'a', to: 'b', op: '>' }],
+    });
+    const { container } = render(
+      <>
+        <GlyphoGraph graph={graph} />
+        <GlyphoGraph graph={graph} />
+      </>
+    );
+    const svgs = Array.from(container.querySelectorAll('svg'));
+    expect(svgs).toHaveLength(2);
+    const ids = svgs.map(svg => Array.from(svg.querySelectorAll('marker')).map(m => m.id));
+    for (const id of ids[1]) expect(ids[0]).not.toContain(id);
+    for (const [i, svg] of svgs.entries()) {
+      for (const id of ids[i]) expect(id).toMatch(/^[A-Za-z][A-Za-z0-9_-]*$/);
+      const ref = svg.querySelector('path')!.getAttribute('marker-end')!;
+      expect(ids[i]).toContain(ref.slice('url(#'.length, -1));
+    }
+  });
+
+  it('renders every group when group names repeat', () => {
+    const errors: unknown[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => { errors.push(args); };
+    try {
+      const graph = makeGraph({
+        nodes: [{ id: 'a' }, { id: 'b' }],
+        groups: [
+          { id: 'dup', members: ['a'] },
+          { id: 'dup', members: ['b'] },
+        ],
+      });
+      const { container } = render(<GlyphoGraph graph={graph} />);
+      expect(container.querySelectorAll('rect[stroke-dasharray]')).toHaveLength(2);
+    } finally {
+      console.error = original;
+    }
+    // React warns about duplicate keys through console.error
+    expect(errors.filter(e => String(e).includes('same key'))).toEqual([]);
+  });
+
+  it('renders multi-line edge labels as separate lines', () => {
+    const graph = makeGraph({
+      nodes: [{ id: 'a' }, { id: 'b' }],
+      edges: [{ from: 'a', to: 'b', op: '>', label: 'one\ntwo' }],
+    });
+    const { container } = render(<GlyphoGraph graph={graph} />);
+    const texts = Array.from(container.querySelectorAll('text')).map(t => t.textContent);
+    expect(texts).toContain('one');
+    expect(texts).toContain('two');
+  });
 });

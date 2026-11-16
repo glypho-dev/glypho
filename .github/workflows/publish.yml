@@ -33,8 +33,12 @@ jobs:
             exit 1
           fi
 
+      # package-lock.json must list every platform's optional binaries
+      # (rollup, esbuild, resvg). If npm ci fails on Linux with a missing
+      # native module, regenerate the lockfile from scratch:
+      #   rm -rf node_modules package-lock.json && npm install --package-lock-only
       - name: Install dependencies
-        run: rm -rf node_modules package-lock.json && npm install
+        run: npm ci
 
       - name: Build
         run: npm run build

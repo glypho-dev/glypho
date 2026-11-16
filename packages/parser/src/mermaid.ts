@@ -27,7 +27,11 @@ const EDGE_MAP: Record<EdgeOp, string> = {
 const GLYPHO_SHAPE_CLASS_PREFIX = 'glypho_shape_';
 
 function escapeLabel(label: string): string {
+  // `&` first so the entities added below aren't double-escaped; `<` so a
+  // literal `<br/>` in a label isn't read back as a line break
   return label
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
     .replace(/"/g, '&quot;')
     .replace(/\n/g, '<br/>')
     .replace(/#/g, '&#35;');

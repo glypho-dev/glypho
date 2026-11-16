@@ -22,6 +22,10 @@ describe('glypho (default entry)', () => {
     expect(mod.computeLayout).toBeTypeOf('function');
     expect(mod.measureNode).toBeTypeOf('function');
     expect(mod.measureText).toBeTypeOf('function');
+    expect(mod.measureLine).toBeTypeOf('function');
+    expect(mod.wrapLabel).toBeTypeOf('function');
+    expect(mod.LINE_HEIGHT).toBeTypeOf('number');
+    expect(mod.MAX_LABEL_WIDTH).toBeTypeOf('number');
     expect(mod.resolveNodeStyle).toBeTypeOf('function');
     expect(mod.resolveEdgeColor).toBeTypeOf('function');
   });
@@ -53,5 +57,15 @@ describe('glypho/react entry', () => {
     expect(mod.parse).toBeTypeOf('function');
     expect(mod.render).toBeTypeOf('function');
     expect(mod.renderSvg).toBeTypeOf('function');
+  });
+});
+
+describe('entry point parity', () => {
+  it('the default entry re-exports every @glypho/renderer/svg value export', async () => {
+    const svg = await import('@glypho/renderer/svg');
+    const mod = (await import('../index.js')) as Record<string, unknown>;
+    for (const name of Object.keys(svg)) {
+      expect(mod[name], name).toBe((svg as Record<string, unknown>)[name]);
+    }
   });
 });

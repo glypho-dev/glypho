@@ -79,6 +79,24 @@ describe('resolveNodeStyle', () => {
     expect(style.fill).not.toBe('#222222');
   });
 
+  it('ignores non-numeric and negative stroke-width', () => {
+    const node: Node = { id: 'a', shape: 'r' };
+    for (const value of ['abc', '-3', 'NaN', 'Infinity']) {
+      const style = resolveNodeStyle(node, [{ selector: '#a', properties: { 'stroke-width': value } }]);
+      expect(style.strokeWidth, value).toBe(2);
+    }
+  });
+
+  it('clamps absurd stroke-width and accepts zero', () => {
+    const node: Node = { id: 'a', shape: 'r' };
+    const huge = resolveNodeStyle(node, [{ selector: '#a', properties: { 'stroke-width': '5000' } }]);
+    expect(huge.strokeWidth).toBe(20);
+    const zero = resolveNodeStyle(node, [{ selector: '#a', properties: { 'stroke-width': '0' } }]);
+    expect(zero.strokeWidth).toBe(0);
+    const normal = resolveNodeStyle(node, [{ selector: '#a', properties: { 'stroke-width': '3.5px' } }]);
+    expect(normal.strokeWidth).toBe(3.5);
+  });
+
   it('defaults to rectangle when no shape specified', () => {
     const node: Node = { id: 'a' };
     const style = resolveNodeStyle(node, []);

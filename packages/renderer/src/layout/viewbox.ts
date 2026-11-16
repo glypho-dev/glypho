@@ -1,5 +1,4 @@
 import type { LayoutResult } from './types.js';
-import { pathMidpoint } from '../edges/paths.js';
 
 /**
  * Compute viewBox bounds from the full layout, including nodes, groups,
@@ -27,11 +26,10 @@ export function computeViewBox(layout: LayoutResult, padding: number): string {
     }
 
     // Edge label bounds
-    if (e.edge.label) {
-      const mid = pathMidpoint(e.points);
-      const labelHalfW = (e.edge.label.length * 7 + 16) / 2;
-      allX.push(mid.x - labelHalfW, mid.x + labelHalfW);
-      allY.push(mid.y - 24, mid.y - 4); // label is translated to (mid.x, mid.y - 14), rect y=-10..+10
+    if (e.labelBox) {
+      const { x, y, width, height } = e.labelBox;
+      allX.push(x - width / 2, x + width / 2);
+      allY.push(y - height / 2, y + height / 2);
     }
   }
 
