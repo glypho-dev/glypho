@@ -17,12 +17,12 @@ export type {
 export {
   render, renderSvg,
   computeLayout,
-  measureNode, measureText, measureLine, wrapLabel,
+  measureNode, measureText, measureLine, measureEdgeLabel, wrapLabel,
   LINE_HEIGHT, MAX_LABEL_WIDTH,
   resolveNodeStyle, resolveEdgeColor,
 } from '@glypho/renderer/svg';
 
 export type {
   RenderSvgOptions,
-  LayoutNode, LayoutEdge, LayoutGroup, LayoutResult, Point, NodeStyle,
+  LayoutNode, LayoutEdge, LayoutGroup, LayoutResult, Point, EdgeLabelBox, NodeStyle,
 } from '@glypho/renderer/svg';

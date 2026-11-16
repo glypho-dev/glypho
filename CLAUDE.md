@@ -49,8 +49,8 @@ Monorepo uses npm workspaces.
 - `<GlyphoGraph graph={graph} />` — React component (SVG output, `onNodeClick`, `onEdgeClick`)
 - `GlyphoGraphProps`: `{ graph, width?, height?, padding?, className?, style?, onNodeClick?, onEdgeClick? }`
 - `computeLayout(graph): LayoutResult` — dagre-based auto-layout
-- Types: `LayoutNode`, `LayoutEdge`, `LayoutGroup`, `LayoutResult`, `Point`, `NodeStyle`
-- Utilities: `measureNode`, `measureText`, `measureLine`, `wrapLabel`, `LINE_HEIGHT`, `MAX_LABEL_WIDTH`, `resolveNodeStyle`, `resolveEdgeColor`
+- Types: `LayoutNode`, `LayoutEdge`, `LayoutGroup`, `LayoutResult`, `Point`, `EdgeLabelBox`, `NodeStyle`
+- Utilities: `measureNode`, `measureText`, `measureLine`, `measureEdgeLabel`, `wrapLabel`, `LINE_HEIGHT`, `MAX_LABEL_WIDTH`, `resolveNodeStyle`, `resolveEdgeColor`
 - The root entry re-exports everything in `/svg` (including `render`/`renderSvg`); `typesVersions` maps `/svg` types for `moduleResolution: node10`
 
 **Umbrella** (`glypho`):
