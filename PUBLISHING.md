@@ -68,15 +68,15 @@ The workflow (`.github/workflows/publish.yml`):
 1. Verifies the tag version matches the package versions.
 2. Verifies the tag points at the current `main` branch HEAD.
 3. Builds and tests all packages.
-4. Publishes in dependency order: parser → renderer → cli → glypho.
-5. Uses `--provenance` for npm attestation.
-6. Detects pre-release versions (e.g., `0.2.0-beta.1`) and publishes with `--tag next`.
+4. Upgrades npm to a version that supports trusted publishing (Node 22 bundles npm 10).
+5. Publishes in dependency order: parser → renderer → cli → glypho, authenticating with npm trusted publishing (OIDC). No npm token is stored in GitHub.
+6. Uses `--provenance` for npm attestation.
+7. Detects pre-release versions (e.g., `0.2.0-beta.1`) and publishes with `--tag next`.
 
 **Prerequisites**:
-- An `NPM_TOKEN` secret must be configured for the `npm-publish` GitHub Actions environment (npm automation token with publish access to `@glypho` scope and `glypho` package).
+- Each of the four packages has a trusted publisher on npmjs.com that matches this workflow (see [Trusted Publishing Setup](#trusted-publishing-setup-one-time) below).
 - Protect the `npm-publish` environment with required reviewers if you want a human approval gate before publish.
 - Restrict the `npm-publish` environment deployment to `v*` tags (not branches — the workflow is triggered by tag pushes, which GitHub does not treat as branch refs).
-- Do not keep `NPM_TOKEN` as a broad repository secret when the environment secret is sufficient.
 
 **Step-by-step release flow**:
 
@@ -96,10 +96,52 @@ Before relying on automated publishing, configure GitHub so the workflow assumpt
 2. Require pull requests before merge.
 3. Require CI status checks to pass before merge.
 4. Block force-pushes and branch deletion on `main`.
-5. Create an `npm-publish` environment.
-6. Store `NPM_TOKEN` in that environment.
-7. Restrict the environment deployment to `v*` tags.
-8. Optionally require reviewers for the environment to add a manual approval gate.
+5. Create an `npm-publish` environment. It needs no secrets: npm authenticates the workflow through OIDC.
+6. Restrict the environment deployment to `v*` tags.
+7. Optionally require reviewers for the environment to add a manual approval gate.
+
+## Trusted Publishing Setup (one time)
+
+The publish workflow authenticates to npm with [trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC) instead of a long-lived token. Trusted publishing needs npm 11.5.1 or later and Node 22.14.0 or later, and only works on GitHub-hosted runners. The workflow upgrades npm itself and keeps the `id-token: write` permission it needs.
+
+A maintainer of the packages sets this up once on npmjs.com, for **each** of the four packages:
+
+- `@glypho/parser`
+- `@glypho/renderer`
+- `@glypho/cli`
+- `glypho`
+
+For each package:
+
+1. Sign in to npmjs.com and open the package's **Settings** page.
+2. Under **Trusted Publisher**, choose **GitHub Actions**.
+3. Fill in exactly:
+
+   | Field | Value |
+   |-------|-------|
+   | Organization or user | `glypho-dev` |
+   | Repository | `glypho` |
+   | Workflow filename | `publish.yml` (filename only, not the path) |
+   | Environment name | `npm-publish` |
+
+4. Under **Allowed actions**, allow direct publishing with `npm publish`. The workflow runs plain `npm publish`, not `npm stage publish`. It sets the `latest`/`next` dist-tag as part of the publish, so `npm dist-tag` access is not needed.
+5. Save.
+
+Things to know:
+
+- npm does not validate these fields on save. A typo only shows up as a failed publish. An existing trusted publisher cannot be edited, so delete it and add it again.
+- A newly created trusted publisher must complete its first successful publish within 2 days, or it expires. Set up all four packages shortly before tagging the first release that uses trusted publishing. If the window passes, delete and re-add them.
+
+### Retiring the npm token
+
+Until the first release succeeds through trusted publishing, keep the existing `NPM_TOKEN` secret in the `npm-publish` environment, so that reverting to token-based publishing stays possible.
+
+After the first release has published all four packages through OIDC (check that each new version on npmjs.com shows provenance from GitHub Actions):
+
+1. Delete the npm token on npmjs.com (**Access Tokens**).
+2. Remove the `NPM_TOKEN` secret from the `npm-publish` environment in GitHub.
+
+Optionally, harden each package afterwards. In the package's **Settings → Publishing access**, choose **Require two-factor authentication and disallow tokens**. Trusted publishers keep working because they use OIDC. All token-based publishing is then blocked, so a manual publish with the helper script needs an interactive login with 2FA.
 
 ## Manual Release Checklist
 

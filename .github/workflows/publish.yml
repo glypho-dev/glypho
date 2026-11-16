@@ -101,14 +101,16 @@ jobs:
             echo "tag=latest" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Verify npm token is configured
+      # Publishing authenticates with npm trusted publishing (OIDC, via the
+      # id-token: write permission above); no NPM_TOKEN secret is used.
+      # Trusted publishing needs npm >= 11.5.1, and Node 22 bundles npm 10.
+      # Upgraded only here, after install/build/test, so those steps use the
+      # same npm as CI. Each package needs a trusted publisher on npmjs.com
+      # (see PUBLISHING.md).
+      - name: Upgrade npm for trusted publishing
         run: |
-          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-            echo "::error::NODE_AUTH_TOKEN is not set. Configure NPM_TOKEN in the npm-publish environment."
-            exit 1
-          fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          npm install -g npm@11.21.2
+          echo "node $(node --version), npm $(npm --version)"
 
       - name: Publish @glypho/parser
         run: |
@@ -119,8 +121,6 @@ jobs:
               exit 1
             fi
           }
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @glypho/renderer
         run: |
@@ -131,8 +131,6 @@ jobs:
               exit 1
             fi
           }
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @glypho/cli
         run: |
@@ -143,8 +141,6 @@ jobs:
               exit 1
             fi
           }
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish glypho
         run: |
@@ -155,5 +151,3 @@ jobs:
               exit 1
             fi
           }
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
