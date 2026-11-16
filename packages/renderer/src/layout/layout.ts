@@ -710,9 +710,40 @@ export function computeLayout(graph: Graph): LayoutResult {
 
   let mapX: (value: number) => number = value => value;
   let mapY: (value: number) => number = value => value;
+  // Labels only need room along the rank axis, where they sit between ranks.
+  // Across it they are just boxes that must not be squeezed.
+  const rankAxisIsX = graph.direction === 'LR' || graph.direction === 'RL';
+  const labelSpans = (axisX: boolean) => labelRects.map(rect => (axisX
+    ? { center: rect.x + rect.width / 2, extent: rect.width }
+    : { center: rect.y + rect.height / 2, extent: rect.height }));
   // Explicitly positioned nodes keep absolute coordinates, so shifting the
   // auto-laid content around them could create collisions — leave graphs
   // that mix pinned and auto nodes uncompressed.
+  if (clusterKeys.size === 0 && labelRects.length > 0 && explicitPositionIds.size === 0) {
+    // Flat graphs: dagre widens every labelled rank gap by the label's full
+    // extent. Pull those gaps back to the plain ranksep whenever the label fits.
+    const labels = labelSpans(rankAxisIsX);
+    const rects: Rect[] = [...layoutNodes, ...reservedRects];
+    const map = buildAxisCompressionMap(
+      rects.map(rect => (rankAxisIsX
+        ? [rect.x, rect.x + rect.width]
+        : [rect.y, rect.y + rect.height]) as [number, number]),
+      (gapStart, gapEnd) => {
+        let labelNeed = 0;
+        for (const label of labels) {
+          if (label.center > gapStart && label.center < gapEnd) {
+            labelNeed = Math.max(labelNeed, label.extent + EDGE_LABEL_CLEARANCE * 2);
+          }
+        }
+        return Math.max(DEFAULT_RANK_SEP, labelNeed);
+      },
+    );
+    if (rankAxisIsX) mapX = map; else mapY = map;
+    for (const node of layoutNodes) {
+      node.x = mapX(node.x);
+      node.y = mapY(node.y);
+    }
+  }
   if (clusterKeys.size > 0 && explicitPositionIds.size === 0) {
     // Cluster border positions (pre-compression coordinates). A gap crossed
     // by group-box edges must keep room for each border it contains: top
@@ -748,18 +779,19 @@ export function computeLayout(graph: Graph): LayoutResult {
             labelNeed = Math.max(labelNeed, label.extent + EDGE_LABEL_CLEARANCE * 2);
           }
         }
-        return Math.max(MAX_RANK_GAP, needed + 32 + labelNeed);
+        // The label's own clearance stands in for the daylight margin.
+        return Math.max(MAX_RANK_GAP, needed + (labelNeed > 0 ? labelNeed : 32));
       };
     const occupiedRects: Rect[] = [...layoutNodes, ...reservedRects];
+    const occupiedX = rankAxisIsX ? occupiedRects : [...occupiedRects, ...labelRects];
+    const occupiedY = rankAxisIsX ? [...occupiedRects, ...labelRects] : occupiedRects;
     mapX = buildAxisCompressionMap(
-      occupiedRects.map(rect => [rect.x, rect.x + rect.width] as [number, number]),
-      makeGapBudget(startsX, endsX, GROUP_PADDING,
-        labelRects.map(rect => ({ center: rect.x + rect.width / 2, extent: rect.width }))),
+      occupiedX.map(rect => [rect.x, rect.x + rect.width] as [number, number]),
+      makeGapBudget(startsX, endsX, GROUP_PADDING, rankAxisIsX ? labelSpans(true) : []),
     );
     mapY = buildAxisCompressionMap(
-      occupiedRects.map(rect => [rect.y, rect.y + rect.height] as [number, number]),
-      makeGapBudget(startsY, endsY, GROUP_PADDING + GROUP_LABEL_HEIGHT,
-        labelRects.map(rect => ({ center: rect.y + rect.height / 2, extent: rect.height }))),
+      occupiedY.map(rect => [rect.y, rect.y + rect.height] as [number, number]),
+      makeGapBudget(startsY, endsY, GROUP_PADDING + GROUP_LABEL_HEIGHT, rankAxisIsX ? [] : labelSpans(false)),
     );
     for (const node of layoutNodes) {
       node.x = mapX(node.x);
