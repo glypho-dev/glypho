@@ -161,7 +161,7 @@ Third line"""
 
 #### Labels
 
-- **Single word**: No quotes needed (`Login`)
+- **Single word**: No quotes needed (`Login`). A bare label must be a single identifier or integer token, so words like `3D`, `2FA` or `_draft` need quotes
 - **Multiple words**: Use quotes (`"User Login"`) — a multi-word bare label is a parse error
 - **Non-ASCII text** (CJK, emoji, accents): Use quotes (`"日本語"`) — unquoted non-ASCII is a parse error
 - **Numeric labels**: Valid without quotes (`42`)
@@ -272,7 +272,8 @@ Single-line flat groups remain valid: `@auth{login mfa}`
 
 **Constraints:**
 - Nodes may belong to multiple groups
-- Group member references are not validated at parse time
+- A member that no other statement mentions is created as a plain node (as with edges and class assignments), so `@g{x y}` alone yields nodes `x` and `y` inside group `g`
+- Groups nest at most 100 levels deep; deeper nesting is a parse error
 
 ### Class Assignments
 
@@ -302,6 +303,7 @@ Explicitly position and size nodes for canvas mode.
 login@100,200
 ```
 
+- A position for a node that nothing else declares creates that node
 - Coordinates are integers only (no decimals)
 - Origin (0,0) is typically top-left
 - Negative coordinates are not yet supported (using one is a parse error)
@@ -346,7 +348,11 @@ $:d{fill:#ffa}
 $.highlight{fill:#ff0 stroke:#f00}
 ```
 
-Colors must be hex — named colors (e.g. `fill:red`) are not valid and fall back to a gray default. Other properties (e.g. `font-family`) parse without error but have no effect on rendered output. For property values with spaces, use quotes: `$:r{data-note:"two words"}`.
+Colors must be hex — named colors (e.g. `fill:red`) are not valid and fall back to a gray default. A value starting with `#` must be a valid 3- or 6-digit hex color. Other properties (e.g. `font-family`) parse without error but have no effect on rendered output.
+
+Unquoted values are any run of non-whitespace characters other than the reserved `> ~ = : @ ^ # { } "`, so decimals and units need no quotes: `$:r{stroke-width:1.5 opacity:0.5 font-size:12px}`. For property values with spaces, use quotes: `$:r{data-note:"two words"}`.
+
+A shape selector must name one of the six shapes (`$:zzz{}` is a parse error).
 
 ### Comments
 
@@ -390,7 +396,9 @@ desc:r "Line one\nLine two\nLine three"
 | `\\`   | Backslash |
 | `\"`   | Quote     |
 
-Escape sequences are processed only inside regular (single `"`) quotes. Triple-quoted content is taken literally: a `\n` inside `"""..."""` stays as backslash-n; use real line breaks instead.
+Escape sequences are processed only inside regular (single `"`) quotes. Any other escape (e.g. `\p`) is a parse error. Triple-quoted content is taken literally: a `\n` inside `"""..."""` stays as backslash-n; use real line breaks instead. Triple-quoted content cannot contain `"""` or end with `"`; use a regular quoted string with `\n` escapes for those labels.
+
+A regular quoted string must close on the line it opens, and a triple-quoted string must be closed before the end of the file. An unterminated string is a parse error reported at its opening quote.
 
 ---
 
@@ -416,21 +424,29 @@ The formal EBNF grammar is defined in [grammar.ebnf](grammar.ebnf).
 
 ```ebnf
 graph           = { line } ;
-line            = direction | node | edge | edge_chain | group
-                | class_assignment | position | style_block | comment | blank ;
+line            = statement , [ comment ] | comment | blank ;
+statement       = direction | node | edge | edge_chain | group | class_assignment
+                | position | style_block ;
 
 direction       = ">" , ( "LR" | "TB" | "RL" | "BT" ) ;
 node            = id , [ ":" , shape ] , [ label ] , [ color ] ;
 edge            = id , edge_op , id , [ label ] , [ color ] ;
 edge_chain      = id , edge_op , id , { edge_op , id } ;
-group           = "@" , id , [ label ] , "{" , { id } , "}" ;
+group           = "@" , id , [ label ] , "{" , { group_member } , "}" ;
+group_member    = id | group ;
+class_assignment = "." , class_name , "{" , { id } , "}" ;
 position        = id , "@" , integer , "," , integer , [ "^" , integer , "x" , integer ] ;
 style_block     = "$" , selector , "{" , { property } , "}" ;
-comment         = "//" , { any_char } ;
+selector        = ":" , shape | "." , class_name | "#" , id ;
+property        = prop_name , ":" , prop_value ;
+prop_value      = color | value_char , { value_char } | quoted_string ;
+comment         = "//" , { line_char } ;
 
-id              = letter , { letter | digit | "_" | "-" } ;
+id              = letter , { id_char | "-" , id_char } ;
 shape           = "r" | "d" | "c" | "o" | "p" | "h" ;
 edge_op         = ">" | "~" | "=" | "--" | "<>" ;
+label           = word | quoted_string | multiline_string ;
+word            = id | integer ;
 ```
 
 ---
@@ -455,6 +471,7 @@ interface Node {
   label?: string;
   color?: string;
   classes?: string[];
+  line?: number;       // source line of the first statement that mentions the node
 }
 
 interface Edge {
@@ -463,12 +480,15 @@ interface Edge {
   op: '>' | '~' | '=' | '--' | '<>';
   label?: string;
   color?: string;
+  line?: number;
 }
 
 interface Group {
   id: string;
   label?: string;
-  members: string[];
+  members: string[];   // direct node members only
+  children?: Group[];  // nested groups
+  line?: number;
 }
 
 interface Position {
@@ -477,13 +497,17 @@ interface Position {
   y: number;
   width?: number;
   height?: number;
+  line?: number;
 }
 
 interface Style {
-  selector: string;
+  selector: string;    // ':r', '.class' or '#id'
   properties: Record<string, string>;
+  line?: number;
 }
 ```
+
+`line` fields are 1-based source line numbers, set by the parser and optional for producers that build graphs in code.
 
 ---
 
@@ -502,6 +526,11 @@ The following grammar edge cases have explicit resolutions:
 | Size without position | **Not supported** - use `id@x,y^wxh` |
 | Multiple statements per line | **Not supported** - one statement per line |
 | End-of-line comments | **Supported** - `login:r Login // comment` |
+| Undeclared group members / positions | **Created implicitly** - like edge endpoints and class members |
+| Bare labels like `3D`, `_x`, `a-` | **Invalid** - a bare label must be one id or integer; quote the rest |
+| Unterminated strings | **Parse error** - at the opening quote |
+| `$#abc{...}` | **Id selector** - `#` after `$` always starts an id, even a hex-looking one |
+| Decimal / unit style values | **Supported** - `stroke-width:1.5`, `font-size:12px` |
 
 ---
 
