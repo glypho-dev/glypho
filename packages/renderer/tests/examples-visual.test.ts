@@ -9,10 +9,6 @@ import type { LayoutGroup, LayoutNode } from '../src/layout/types.js';
 const EXAMPLES_DIR = resolve(import.meta.dirname, '../../../spec/examples');
 const EXAMPLES = readdirSync(EXAMPLES_DIR).filter(f => f.endsWith('.g')).sort();
 
-// glypho-explained.g mixes pinned `id@x,y` nodes with auto layout; dagre cannot
-// see pinned coordinates, so overlaps are inherent there (the published
-// renderer fails it too). Snapshots still cover it; invariants skip it.
-const LAYOUT_KNOWN_ISSUES = new Set(['glypho-explained.g']);
 
 function loadGraph(name: string): Graph {
   const source = readFileSync(resolve(EXAMPLES_DIR, name), 'utf-8');
@@ -46,6 +42,32 @@ function memberSet(group: Group): Set<string> {
   return ids;
 }
 
+/** Does any segment of a polyline cross the rectangle? (Liang–Barsky) */
+function polylineHitsRect(points: Array<{ x: number; y: number }>, rect: Rect): boolean {
+  for (let k = 0; k + 1 < points.length; k++) {
+    const p = points[k];
+    const dx = points[k + 1].x - p.x;
+    const dy = points[k + 1].y - p.y;
+    let t0 = 0;
+    let t1 = 1;
+    let hit = true;
+    for (const [pp, qq] of [
+      [-dx, p.x - rect.x], [dx, rect.x + rect.width - p.x],
+      [-dy, p.y - rect.y], [dy, rect.y + rect.height - p.y],
+    ]) {
+      if (pp === 0) {
+        if (qq < 0) { hit = false; break; }
+        continue;
+      }
+      const t = qq / pp;
+      if (pp < 0) { if (t > t1) { hit = false; break; } if (t > t0) t0 = t; }
+      else { if (t < t0) { hit = false; break; } if (t < t1) t1 = t; }
+    }
+    if (hit) return true;
+  }
+  return false;
+}
+
 /** Sibling group sets: top-level groups, plus each group's children */
 function siblingSets(groups: Group[]): Group[][] {
   const sets: Group[][] = [groups];
@@ -66,7 +88,6 @@ describe('SVG snapshots of spec examples', () => {
 
 describe('layout invariants on spec examples', () => {
   for (const name of EXAMPLES) {
-    if (LAYOUT_KNOWN_ISSUES.has(name)) continue;
     const graph = loadGraph(name);
     const layout = computeLayout(graph);
     const nodeById = new Map<string, LayoutNode>(layout.nodes.map(n => [n.id, n]));
@@ -92,6 +113,34 @@ describe('layout invariants on spec examples', () => {
           if (node && !contains(lg, node)) {
             bad.push(`${id} outside ${lg.group.id}`);
           }
+        }
+      }
+      expect(bad).toEqual([]);
+    });
+
+    it(`${name}: edge routes pass through no other node`, () => {
+      const bad: string[] = [];
+      for (const edge of layout.edges) {
+        for (const node of layout.nodes) {
+          if (node.id === edge.edge.from || node.id === edge.edge.to) continue;
+          // Control polygon vs the node shrunk by 3px (the drawn curve hugs it)
+          const shrunk = { x: node.x + 3, y: node.y + 3, width: node.width - 6, height: node.height - 6 };
+          if (polylineHitsRect(edge.points, shrunk)) {
+            bad.push(`${edge.edge.from}>${edge.edge.to} through ${node.id}`);
+          }
+        }
+      }
+      expect(bad).toEqual([]);
+    });
+
+    it(`${name}: edge labels clear every node`, () => {
+      const bad: string[] = [];
+      for (const edge of layout.edges) {
+        const box = edge.labelBox;
+        if (!box) continue;
+        const rect = { x: box.x - box.width / 2, y: box.y - box.height / 2, width: box.width, height: box.height };
+        for (const node of layout.nodes) {
+          if (overlaps(rect, node)) bad.push(`${edge.edge.label} over ${node.id}`);
         }
       }
       expect(bad).toEqual([]);

@@ -38,32 +38,40 @@ function midpoint(a: Point, b: Point): Point {
 export const ARROW_END_LENGTH: Record<string, number> = { '>': 10, '~': 10, '=': 14, '<>': 10 };
 export const ARROW_START_LENGTH: Record<string, number> = { '<>': 10 };
 
+/**
+ * Trim `amount` of length off the end of a polyline, so an arrowhead drawn
+ * from the new end lands on the node border. The trim walks back across as
+ * many segments as it needs — dense routes can end in segments shorter than
+ * the arrowhead, and trimming only the last one left the arrow under the node.
+ */
 export function shortenEnd(pts: Point[], amount: number): Point[] {
   if (pts.length < 2) return pts;
-  const result = pts.map(p => ({ ...p }));
-  const last = result[result.length - 1];
-  const prev = result[result.length - 2];
-  const dx = last.x - prev.x;
-  const dy = last.y - prev.y;
-  const len = Math.sqrt(dx * dx + dy * dy);
-  if (len <= amount) return result;
-  const r = (len - amount) / len;
-  result[result.length - 1] = { x: prev.x + dx * r, y: prev.y + dy * r };
-  return result;
+  return trimFromStart([...pts].reverse(), amount).reverse();
 }
 
+/** Trim `amount` of length off the start of a polyline (see shortenEnd) */
 export function shortenStart(pts: Point[], amount: number): Point[] {
   if (pts.length < 2) return pts;
-  const result = pts.map(p => ({ ...p }));
-  const first = result[0];
-  const next = result[1];
-  const dx = next.x - first.x;
-  const dy = next.y - first.y;
-  const len = Math.sqrt(dx * dx + dy * dy);
-  if (len <= amount) return result;
-  const r = amount / len;
-  result[0] = { x: first.x + dx * r, y: first.y + dy * r };
-  return result;
+  return trimFromStart(pts, amount);
+}
+
+function trimFromStart(pts: Point[], amount: number): Point[] {
+  const total = pts.slice(1).reduce((sum, p, i) => sum + Math.hypot(p.x - pts[i].x, p.y - pts[i].y), 0);
+  // Never trim a path away entirely
+  if (total <= amount) return pts.map(p => ({ ...p }));
+  let remaining = amount;
+  let i = 0;
+  for (; i + 1 < pts.length; i++) {
+    const len = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
+    if (len > remaining) break;
+    remaining -= len;
+  }
+  const a = pts[i];
+  const b = pts[i + 1];
+  const len = Math.hypot(b.x - a.x, b.y - a.y);
+  const r = remaining / len;
+  const first = { x: a.x + (b.x - a.x) * r, y: a.y + (b.y - a.y) * r };
+  return [first, ...pts.slice(i + 1).map(p => ({ ...p }))];
 }
 
 /** Get the midpoint of a path (for label placement) */
