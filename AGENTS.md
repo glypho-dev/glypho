@@ -48,6 +48,7 @@ This repo is public and open source — everything committed or pushed is world-
 - Personal data: real names beyond the `saultoresan` handle, personal email addresses, phone numbers
 - Machine-specific details: absolute local paths (`/Users/...`, `/home/...`, `/private/tmp/...`), hostnames, internal or private URLs — watch generated files such as SVG snapshots, fixtures and logs
 - Private notes, scratch files, or agent/session artifacts not meant for the project
+- Credential details: never describe a token or secret's type, scope, permissions, expiry date, creation date or owning account. This also applies to PR descriptions, issues and release notes. Refer to secrets only generically, such as "the `NPM_TOKEN` secret" or "the npm token".
 
 Commit with the GitHub noreply address, never a personal email. A quick check before committing:
 
