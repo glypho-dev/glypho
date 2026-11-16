@@ -162,3 +162,24 @@ export function measureNode(node: Node): { width: number; height: number } {
 
   return { width: Math.ceil(width), height: Math.ceil(height) };
 }
+
+/** Edge labels render at 13px; glyph estimates above are calibrated for 14px */
+export const EDGE_LABEL_FONT_SIZE = 13;
+export const EDGE_LABEL_LINE_HEIGHT = 16;
+const EDGE_LABEL_PADDING_X = 8;
+const EDGE_LABEL_PADDING_Y = 2;
+
+/**
+ * Size an edge label's background box. Shares wrapLabel with node labels so
+ * manual `\n` breaks and the auto-wrap width apply to both; the layout, the
+ * SVG/React renderers and the viewBox all read this one measurement.
+ */
+export function measureEdgeLabel(label: string): { width: number; height: number; lines: string[] } {
+  const lines = wrapLabel(label);
+  const textWidth = Math.max(...lines.map(measureLine)) * (EDGE_LABEL_FONT_SIZE / 14);
+  return {
+    width: Math.ceil(textWidth + EDGE_LABEL_PADDING_X * 2),
+    height: lines.length * EDGE_LABEL_LINE_HEIGHT + EDGE_LABEL_PADDING_Y * 2,
+    lines,
+  };
+}

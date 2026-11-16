@@ -1,12 +1,14 @@
 import type { EdgeOp } from '@glypho/parser';
 import type { LayoutEdge } from '../layout/types.js';
-import { pointsToPath, pathMidpoint, shortenEnd, shortenStart, ARROW_END_LENGTH, ARROW_START_LENGTH } from './paths.js';
+import { pointsToPath, shortenEnd, shortenStart, ARROW_END_LENGTH, ARROW_START_LENGTH } from './paths.js';
 import { resolveEdgeColor } from '../styles/resolve.js';
 import { markerEndRef, markerStartRef } from './markers.js';
+import { EDGE_LABEL_FONT_SIZE, EDGE_LABEL_LINE_HEIGHT } from '../layout/sizing.js';
 
 interface EdgePathProps {
   layoutEdge: LayoutEdge;
   suffixMap: Map<string, string>;
+  markerPrefix: string;
   onClick?: (from: string, to: string) => void;
 }
 
@@ -23,7 +25,7 @@ const EDGE_VISUALS: Record<EdgeOp, EdgeVisual> = {
   '<>': { strokeWidth: 2 },
 };
 
-export function EdgePath({ layoutEdge, suffixMap, onClick }: EdgePathProps) {
+export function EdgePath({ layoutEdge, suffixMap, markerPrefix, onClick }: EdgePathProps) {
   const { edge } = layoutEdge;
   let points = layoutEdge.points;
   const color = resolveEdgeColor(edge.color);
@@ -45,8 +47,8 @@ export function EdgePath({ layoutEdge, suffixMap, onClick }: EdgePathProps) {
       stroke={color}
       strokeWidth={visual.strokeWidth}
       strokeDasharray={visual.strokeDasharray}
-      markerEnd={markerEndRef(edge.op, suffix)}
-      markerStart={markerStartRef(edge.op, suffix)}
+      markerEnd={markerEndRef(edge.op, markerPrefix, suffix)}
+      markerStart={markerStartRef(edge.op, markerPrefix, suffix)}
       onClick={onClick ? () => onClick(edge.from, edge.to) : undefined}
       style={onClick ? { cursor: 'pointer' } : undefined}
     />
@@ -58,32 +60,34 @@ interface EdgeLabelProps {
 }
 
 export function EdgeLabel({ layoutEdge }: EdgeLabelProps) {
-  const { edge, points } = layoutEdge;
-  if (!edge.label) return null;
-
-  const mid = pathMidpoint(points);
+  const box = layoutEdge.labelBox;
+  if (!box) return null;
 
   return (
-    <g transform={`translate(${mid.x}, ${mid.y - 14})`}>
+    <g transform={`translate(${box.x}, ${box.y})`}>
       <rect
-        x={-(edge.label.length * 3.5 + 8)}
-        y={-10}
-        width={edge.label.length * 7 + 16}
-        height={20}
+        x={-box.width / 2}
+        y={-box.height / 2}
+        width={box.width}
+        height={box.height}
         fill="white"
         stroke="#bbb"
         strokeWidth={0.5}
         rx={3}
       />
-      <text
-        textAnchor="middle"
-        dominantBaseline="central"
-        fill="#333333"
-        fontSize={13}
-        fontFamily="system-ui, sans-serif"
-      >
-        {edge.label}
-      </text>
+      {box.lines.map((line, i) => (
+        <text
+          key={i}
+          y={(i - (box.lines.length - 1) / 2) * EDGE_LABEL_LINE_HEIGHT}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fill="#333333"
+          fontSize={EDGE_LABEL_FONT_SIZE}
+          fontFamily="system-ui, sans-serif"
+        >
+          {line}
+        </text>
+      ))}
     </g>
   );
 }

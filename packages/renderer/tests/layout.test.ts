@@ -337,3 +337,99 @@ describe('computeLayout', () => {
     }
   });
 });
+
+describe('computeLayout regressions', () => {
+  type Box = { x: number; y: number; width: number; height: number };
+  const overlap = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width
+    && a.y < b.y + b.height && b.y < a.y + a.height;
+  const inside = (outer: Box, inner: Box) => inner.x >= outer.x && inner.y >= outer.y
+    && inner.x + inner.width <= outer.x + outer.width
+    && inner.y + inner.height <= outer.y + outer.height;
+  const layoutOf = (source: string) => {
+    const { graph, errors } = parse(source);
+    expect(errors).toEqual([]);
+    return computeLayout(graph);
+  };
+  // labelBox is center-based; convert for the rect helpers above
+  const labelRect = (box: { x: number; y: number; width: number; height: number }): Box => ({
+    x: box.x - box.width / 2, y: box.y - box.height / 2, width: box.width, height: box.height,
+  });
+  const pathLength = (points: Array<{ x: number; y: number }>) => points.slice(1)
+    .reduce((sum, p, i) => sum + Math.hypot(p.x - points[i].x, p.y - points[i].y), 0);
+
+  it('keeps a node-less nested group tree off the nodes and out of the origin', () => {
+    const result = layoutOf('x>y\ny>z\n@outer{@inner{}}');
+    const outer = result.groups.find(g => g.group.id === 'outer')!;
+    const inner = result.groups.find(g => g.group.id === 'inner')!;
+    expect(inside(outer, inner)).toBe(true);
+    for (const node of result.nodes) {
+      expect(overlap(outer, node), `outer covers ${node.id}`).toBe(false);
+    }
+    // The node layout is untouched by a group that has nothing in it
+    const plain = layoutOf('x>y\ny>z');
+    expect(result.nodes.map(n => [n.x, n.y])).toEqual(plain.nodes.map(n => [n.x, n.y]));
+  });
+
+  it('gives an empty nested group its own slot inside a populated parent', () => {
+    const result = layoutOf('x>y\ny>z\n@outer{x @inner{}}');
+    const outer = result.groups.find(g => g.group.id === 'outer')!;
+    const inner = result.groups.find(g => g.group.id === 'inner')!;
+    const byId = new Map(result.nodes.map(n => [n.id, n]));
+    expect(inside(outer, inner)).toBe(true);
+    expect(inside(outer, byId.get('x')!)).toBe(true);
+    // The parent must not be stretched over non-members
+    expect(overlap(outer, byId.get('y')!)).toBe(false);
+    expect(overlap(outer, byId.get('z')!)).toBe(false);
+    for (const node of result.nodes) expect(overlap(inner, node)).toBe(false);
+  });
+
+  it('routes duplicate edges separately and keeps their labels apart', () => {
+    const result = layoutOf('a>b yes\na>b no');
+    expect(result.edges).toHaveLength(2);
+    const [yes, no] = result.edges;
+    expect(yes.points).not.toEqual(no.points);
+    expect(yes.labelBox!.lines).toEqual(['yes']);
+    expect(no.labelBox!.lines).toEqual(['no']);
+    expect(overlap(labelRect(yes.labelBox!), labelRect(no.labelBox!))).toBe(false);
+  });
+
+  it('separates unlabelled duplicate edges too', () => {
+    const [first, second] = layoutOf('a>b\na>b').edges;
+    expect(first.points).not.toEqual(second.points);
+  });
+
+  it('draws a real loop for a self-edge on an explicitly positioned node', () => {
+    const result = layoutOf('a>a loop\na@10,10');
+    const [edge] = result.edges;
+    const node = result.nodes[0];
+    expect(pathLength(edge.points)).toBeGreaterThan(20);
+    // Loop leaves the right side of the node and returns to it
+    expect(Math.max(...edge.points.map(p => p.x))).toBeGreaterThan(node.x + node.width);
+    expect(edge.points[0]).not.toEqual(edge.points[edge.points.length - 1]);
+    // Label sits beside the loop, not on the node
+    expect(overlap(labelRect(edge.labelBox!), node)).toBe(false);
+  });
+
+  it('sizes edge labels with glyph metrics, honours \\n, and reserves room in the layout', () => {
+    const result = layoutOf('a>b "这是一个很长的中文标签"\nb>c "first line\\nsecond"');
+    const [cjk, multi] = result.edges;
+    // 11 CJK glyphs at ~1em each — far wider than the old 7px-per-char guess
+    expect(cjk.labelBox!.width).toBeGreaterThan(11 * 12);
+    expect(multi.labelBox!.lines).toEqual(['first line', 'second']);
+    expect(multi.labelBox!.height).toBeGreaterThan(cjk.labelBox!.height);
+    // Dagre reserved space, so labels clear every node
+    for (const edge of result.edges) {
+      for (const node of result.nodes) {
+        expect(overlap(labelRect(edge.labelBox!), node), `${edge.edge.label} over ${node.id}`).toBe(false);
+      }
+    }
+  });
+
+  it('keeps long LR edge labels clear of nodes', () => {
+    const result = layoutOf('>LR\na>b "a fairly long edge label here"\nb>c');
+    const [labelled] = result.edges;
+    for (const node of result.nodes) {
+      expect(overlap(labelRect(labelled.labelBox!), node)).toBe(false);
+    }
+  });
+});

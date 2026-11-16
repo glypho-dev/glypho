@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { renderSvg, render } from '../src/svg/render-svg.js';
+import { escapeXml } from '../src/svg/escape.js';
 import { parseDot } from '@glypho/parser';
 import type { Graph } from '@glypho/parser';
 
@@ -36,11 +37,11 @@ describe('renderSvg', () => {
     const svg = renderSvg(emptyGraph({
       nodes: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }],
       edges: [{ from: 'a', to: 'b', op: '>' }],
-    }));
+    }), { idPrefix: 't' });
     expect(svg).toContain('data-node-id="a"');
     expect(svg).toContain('data-node-id="b"');
     expect(svg).toContain('<path');
-    expect(svg).toContain('marker-end="url(#arrowhead)"');
+    expect(svg).toContain('marker-end="url(#t-arrowhead)"');
   });
 
   it('renders all shape types', () => {
@@ -122,9 +123,9 @@ describe('renderSvg', () => {
     const bidi = renderSvg(emptyGraph({
       nodes: [{ id: 'a' }, { id: 'b' }],
       edges: [{ from: 'a', to: 'b', op: '<>' }],
-    }));
-    expect(bidi).toContain('marker-start="url(#arrowhead-reverse)"');
-    expect(bidi).toContain('marker-end="url(#arrowhead)"');
+    }), { idPrefix: 't' });
+    expect(bidi).toContain('marker-start="url(#t-arrowhead-reverse)"');
+    expect(bidi).toContain('marker-end="url(#t-arrowhead)"');
   });
 
   it('applies width and height options', () => {
@@ -192,9 +193,9 @@ describe('renderSvg', () => {
     // Invalid color falls back safely
     expect(svg).toContain('stroke="#888888"');
     // Marker defs use index-based IDs, not color-derived
-    expect(svg).toMatch(/marker id="arrowhead-\d+"/);
+    expect(svg).toMatch(/marker id="glypho-[a-z0-9]+-arrowhead-\d+"/);
     // Marker refs use the same index-based IDs
-    expect(svg).toMatch(/marker-end="url\(#arrowhead-\d+\)"/);
+    expect(svg).toMatch(/marker-end="url\(#glypho-[a-z0-9]+-arrowhead-\d+\)"/);
   });
 
   it('neutralizes hostile color in direct Graph construction', () => {
@@ -225,15 +226,65 @@ describe('renderSvg', () => {
         { from: 'a', to: 'b', op: '>', color: '#ff0000' },
         { from: 'b', to: 'c', op: '>', color: '#00ff00' },
       ],
-    }));
+    }), { idPrefix: 't' });
     // Each valid color gets its own indexed marker
     expect(svg).toContain('fill="#ff0000"');
     expect(svg).toContain('fill="#00ff00"');
     // Markers are index-based
-    expect(svg).toContain('id="arrowhead-1"');
-    expect(svg).toContain('id="arrowhead-2"');
-    expect(svg).toContain('marker-end="url(#arrowhead-1)"');
-    expect(svg).toContain('marker-end="url(#arrowhead-2)"');
+    expect(svg).toContain('id="t-arrowhead-1"');
+    expect(svg).toContain('id="t-arrowhead-2"');
+    expect(svg).toContain('marker-end="url(#t-arrowhead-1)"');
+    expect(svg).toContain('marker-end="url(#t-arrowhead-2)"');
+  });
+
+  it('strips characters that are illegal in XML from labels', () => {
+    const { svg, errors } = render('a "bad\u0001label\u0008"\nb\na>b "edge\u001flabel"');
+    expect(errors).toEqual([]);
+    // Nothing outside the XML Char production may reach the document
+    expect(svg).not.toMatch(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/);
+    expect(svg).toContain('>badlabel</text>');
+    expect(svg).toContain('>edgelabel</text>');
+  });
+
+  it('keeps tab, newline and carriage return when escaping', () => {
+    expect(escapeXml('a\tb\nc\rd')).toBe('a\tb\nc\rd');
+    expect(escapeXml('x\u0001y\u001f\ufffez')).toBe('xyz');
+    expect(escapeXml('lone \ud800 surrogate')).toBe('lone  surrogate');
+    expect(escapeXml('emoji 😀 kept')).toBe('emoji 😀 kept');
+  });
+
+  it('namespaces marker IDs per graph so inlined SVGs do not collide', () => {
+    const first = renderSvg(emptyGraph({
+      nodes: [{ id: 'a' }, { id: 'b' }],
+      edges: [{ from: 'a', to: 'b', op: '>' }],
+    }));
+    const second = renderSvg(emptyGraph({
+      nodes: [{ id: 'x' }, { id: 'y' }],
+      edges: [{ from: 'x', to: 'y', op: '>', color: '#ff0000' }],
+    }));
+    const ids = (svg: string) => [...svg.matchAll(/<marker id="([^"]+)"/g)].map(m => m[1]);
+    const firstIds = ids(first);
+    expect(firstIds.length).toBeGreaterThan(0);
+    for (const id of ids(second)) expect(firstIds).not.toContain(id);
+    // Every reference resolves to a marker defined in the same document
+    for (const svg of [first, second]) {
+      for (const [, ref] of svg.matchAll(/url\(#([^)]+)\)/g)) expect(ids(svg)).toContain(ref);
+    }
+    // Default prefix is a content hash: rendering is still deterministic
+    expect(renderSvg(emptyGraph({
+      nodes: [{ id: 'a' }, { id: 'b' }],
+      edges: [{ from: 'a', to: 'b', op: '>' }],
+    }))).toBe(first);
+  });
+
+  it('sanitizes a caller-supplied idPrefix', () => {
+    const svg = renderSvg(emptyGraph({
+      nodes: [{ id: 'a' }, { id: 'b' }],
+      edges: [{ from: 'a', to: 'b', op: '>' }],
+    }), { idPrefix: '1"><x onload=y>' });
+    expect(svg).not.toContain('onload=');
+    expect(svg).toContain('id="g1xonloady-arrowhead"');
+    expect(svg).toContain('marker-end="url(#g1xonloady-arrowhead)"');
   });
 });
 
