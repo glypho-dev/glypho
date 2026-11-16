@@ -15,7 +15,11 @@ interface CanvasEdge {
   id: string;
   fromNode: string;
   toNode: string;
+  /** JSON Canvas defaults: fromEnd "none", toEnd "arrow" */
+  fromEnd?: 'none' | 'arrow';
+  toEnd?: 'none' | 'arrow';
   label?: string;
+  color?: string;
 }
 
 interface JsonCanvas {
@@ -70,8 +74,16 @@ export function graphToJsonCanvas(graph: Graph): string {
       toNode: edge.to,
     };
 
+    // JSON Canvas only models arrowheads, so `~` and `=` export as plain arrows
+    if (edge.op === '--') canvasEdge.toEnd = 'none';
+    if (edge.op === '<>') canvasEdge.fromEnd = 'arrow';
+
     if (edge.label) {
       canvasEdge.label = edge.label;
+    }
+
+    if (edge.color) {
+      canvasEdge.color = edge.color;
     }
 
     return canvasEdge;

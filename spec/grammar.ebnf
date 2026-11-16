@@ -6,18 +6,23 @@
 
    Key constraints not expressible in EBNF:
    - One statement per line (no multiple statements on same line)
-   - Comments must be on their own line (no end-of-line comments)
+   - Comments may be on their own line or follow a statement
+   - Spaces and tabs may separate tokens; a bare label is a single token
    - Edge chains cannot have labels (use separate edge statements for labels)
    - Size requires position (no standalone ^wxh)
    - Positions use non-negative integers only (no decimals, no negatives)
+   - Groups nest at most 100 levels deep
+   - Nodes referenced by edges, group members, class assignments or positions
+     are created implicitly when no node statement defines them
    ============================================================================= *)
 
 (* -----------------------------------------------------------------------------
    Top-level Structure
    ----------------------------------------------------------------------------- *)
 graph           = { line } ;
-line            = direction | node | edge | edge_chain | group | class_assignment | position
-                | style_block | comment | blank ;
+line            = statement , [ comment ] | comment | blank ;
+statement       = direction | node | edge | edge_chain | group | class_assignment
+                | position | style_block ;
 blank           = { whitespace } ;
 
 (* -----------------------------------------------------------------------------
@@ -42,6 +47,7 @@ edge_chain      = id , edge_op , id , { edge_op , id } ;
    Groups - Visual containers for related nodes
 
    Groups may be nested to create hierarchy. Nodes may belong to multiple groups.
+   A group body may span several lines.
    ----------------------------------------------------------------------------- *)
 group           = "@" , id , [ label ] , "{" , { group_member } , "}" ;
 group_member    = id | group ;
@@ -61,19 +67,24 @@ size_suffix     = "^" , integer , "x" , integer ;
 style_block     = "$" , selector , "{" , { property } , "}" ;
 selector        = ":" , shape | "." , class_name | "#" , id ;
 property        = prop_name , ":" , prop_value ;
-prop_name       = letter , { letter | digit | "-" } ;
-prop_value      = visible_char , { visible_char } | quoted_string ;
-class_name      = letter , { letter | digit | "_" | "-" } ;
+prop_name       = id ;
+(* Hex colors, numbers with optional decimals or units (2, 1.5, 12px), bare
+   words, or a quoted string for anything containing spaces or reserved chars *)
+prop_value      = color | value_char , { value_char } | quoted_string ;
+class_name      = id ;
 
 (* -----------------------------------------------------------------------------
-   Comments - Full-line comments only
+   Comments - On their own line or after a statement, to the end of the line
    ----------------------------------------------------------------------------- *)
-comment         = "//" , { any_char } ;
+comment         = "//" , { line_char } ;
 
 (* -----------------------------------------------------------------------------
    Tokens
    ----------------------------------------------------------------------------- *)
-id              = letter , { letter | digit | "_" | "-" } ;
+(* A hyphen must be followed by a letter, digit or underscore: "a-b" is one
+   id, "a--b" is an edge, and a trailing "-" is invalid *)
+id              = letter , { id_char | "-" , id_char } ;
+id_char         = letter | digit | "_" ;
 shape           = "r" | "d" | "c" | "o" | "p" | "h" ;
 edge_op         = ">" | "~" | "=" | "--" | "<>" ;
 label           = word | quoted_string | multiline_string ;
@@ -82,10 +93,17 @@ color           = "#" , hex_color ;
 (* -----------------------------------------------------------------------------
    Strings
    ----------------------------------------------------------------------------- *)
-word            = visible_char , { visible_char } ;
-quoted_string   = '"' , { char | escape_seq } , '"' ;
-multiline_string = '"""' , { any_char } , '"""' ;
-escape_seq      = "\" , ( "n" | "t" | '"' | "\" ) ;
+(* A bare label is exactly one id or integer token. Anything else, such as
+   several words, punctuation, "3D" or "_x", must be quoted. *)
+word            = id | integer ;
+(* Must close on the same line. Any escape other than escape_seq is an error. *)
+quoted_string   = dquote , { char | escape_seq } , dquote ;
+(* Taken literally, with no escapes. The content may not contain three
+   consecutive double quotes, nor end with a double quote. *)
+multiline_string = dquote , dquote , dquote , { any_char } , dquote , dquote , dquote ;
+escape_seq      = backslash , ( "n" | "t" | dquote | backslash ) ;
+dquote          = '"' ;
+backslash       = ? the backslash character ? ;
 
 (* -----------------------------------------------------------------------------
    Primitives
@@ -104,6 +122,7 @@ digit           = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
 hex_digit       = digit | "a" | "b" | "c" | "d" | "e" | "f"
                 | "A" | "B" | "C" | "D" | "E" | "F" ;
 whitespace      = " " | "\t" ;
-visible_char    = ? any non-whitespace character except reserved: > ~ = : @ ^ # { } " ? ;
-char            = ? any character except '"' and '\' ? ;
+value_char      = ? any non-whitespace character except the reserved > ~ = : @ ^ # { } " ? ;
+char            = ? any character except a double quote, a backslash or a line break ? ;
+line_char       = ? any character except a line break ? ;
 any_char        = ? any character ? ;

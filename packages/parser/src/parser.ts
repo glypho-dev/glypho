@@ -11,6 +11,21 @@ const EDGE_OPS = new Set<TokenType>([
   TokenType.DASH_DASH, TokenType.DIAMOND,
 ]);
 
+/** Groups nested deeper than this are rejected rather than risking a stack overflow */
+export const MAX_GROUP_DEPTH = 100;
+
+/**
+ * Thrown to abandon the current statement after its error has been recorded.
+ * Only this is caught by the statement loop, so real bugs (and stack
+ * overflows) still surface instead of vanishing into a zero-error result.
+ */
+class ParseAbort extends Error {
+  constructor() {
+    super('parse error');
+    this.name = 'ParseAbort';
+  }
+}
+
 function edgeOpFromToken(type: TokenType): EdgeOp {
   switch (type) {
     case TokenType.GT: return '>';
@@ -46,7 +61,8 @@ export class Parser {
 
       try {
         this.parseStatement();
-      } catch {
+      } catch (err) {
+        if (!(err instanceof ParseAbort)) throw err;
         // Error already recorded — skip to next line
         this.skipToNextLine();
       }
@@ -83,7 +99,7 @@ export class Parser {
     const tok = this.current();
     if (tok.type !== type) {
       this.addError(`Expected ${type} but got ${tok.type}`, tok);
-      throw new Error('parse error');
+      throw new ParseAbort();
     }
     return this.advance();
   }
@@ -136,7 +152,7 @@ export class Parser {
     } else {
       this.addError(`Unexpected '${tok.value || tok.type}' after end of statement`, tok);
     }
-    throw new Error('parse error');
+    throw new ParseAbort();
   }
 
   private ensureNode(id: string, line: number): Node {
@@ -180,7 +196,7 @@ export class Parser {
         return;
 
       case TokenType.AT:
-        this.groups.push(this.parseGroup());
+        this.groups.push(this.parseGroup(1));
         this.expectStatementEnd();
         return;
 
@@ -207,7 +223,7 @@ export class Parser {
 
     if (tok.type !== TokenType.ID || !DIRECTIONS.has(tok.value)) {
       this.addError(`Expected direction (LR, TB, RL, BT)`, tok);
-      throw new Error('parse error');
+      throw new ParseAbort();
     }
 
     if (this.direction) {
@@ -336,14 +352,18 @@ export class Parser {
       } else {
         this.addError(`Unexpected '${tok.value || tok.type}' after chain`, tok);
       }
-      throw new Error('parse error');
+      throw new ParseAbort();
     }
   }
 
   // ── Group ────────────────────────────────────────────────────────────
 
-  private parseGroup(): Group {
+  private parseGroup(depth: number): Group {
     const atTok = this.advance(); // consume @
+    if (depth > MAX_GROUP_DEPTH) {
+      this.addError(`Groups nested more than ${MAX_GROUP_DEPTH} levels deep`, atTok);
+      throw new ParseAbort();
+    }
     const idTok = this.expect(TokenType.ID);
 
     // Optional label (before {)
@@ -365,9 +385,13 @@ export class Parser {
         continue;
       }
       if (this.check(TokenType.AT)) {
-        children.push(this.parseGroup());
+        children.push(this.parseGroup(depth + 1));
       } else {
         const memberTok = this.expect(TokenType.ID);
+        // Like class assignments, group membership creates the node if no
+        // other statement mentions it — otherwise the group would silently
+        // render empty
+        this.ensureNode(memberTok.value, memberTok.line);
         members.push(memberTok.value);
       }
     }
@@ -400,6 +424,8 @@ export class Parser {
 
   private parsePosition(id: string, line: number): void {
     this.advance(); // consume @
+    // A position creates its node if nothing else declares it
+    this.ensureNode(id, line);
 
     const xTok = this.expect(TokenType.INTEGER);
     const x = parseInt(xTok.value, 10);
@@ -445,6 +471,10 @@ export class Parser {
     if (this.check(TokenType.COLON)) {
       this.advance();
       const shapeTok = this.expect(TokenType.ID);
+      if (!SHAPES.has(shapeTok.value)) {
+        this.addError(`Unknown shape '${shapeTok.value}' in style selector — expected one of r, d, c, o, p, h`, shapeTok);
+        throw new ParseAbort();
+      }
       selector = ':' + shapeTok.value;
     } else if (this.check(TokenType.DOT)) {
       this.advance();
@@ -456,7 +486,7 @@ export class Parser {
       selector = '#' + idTok.value;
     } else {
       this.addError('Expected selector (:shape, .class, or #id)', this.current());
-      throw new Error('parse error');
+      throw new ParseAbort();
     }
 
     this.expect(TokenType.LBRACE);
@@ -483,6 +513,12 @@ export class Parser {
       return tok.value;
     }
 
+    // Raw value: `2`, `1.5`, `12px`, `bold`
+    if (tok.type === TokenType.STYLE_VALUE) {
+      this.advance();
+      return tok.value;
+    }
+
     // Color value: #hex
     if (tok.type === TokenType.HASH) {
       this.advance();
@@ -491,24 +527,14 @@ export class Parser {
         this.advance();
         return '#' + colorTok.value;
       }
-      return '#';
-    }
-
-    // Integer value
-    if (tok.type === TokenType.INTEGER) {
-      this.advance();
-      return tok.value;
-    }
-
-    // ID value (like a bare word)
-    if (tok.type === TokenType.ID) {
-      this.advance();
-      return tok.value;
+      const shown = colorTok.type === TokenType.ID || colorTok.type === TokenType.INTEGER
+        ? `#${colorTok.value}` : '#';
+      this.addError(`Invalid hex color '${shown}' — use 3 or 6 hex digits (e.g. #f00 or #ff0000)`, tok);
+      throw new ParseAbort();
     }
 
     this.addError('Expected property value', tok);
-    this.advance();
-    return '';
+    throw new ParseAbort();
   }
 
   // ── Label & Color helpers ────────────────────────────────────────────
@@ -558,7 +584,7 @@ export class Parser {
         `Invalid hex color '${shown}' — use 3 or 6 hex digits (e.g. #f00 or #ff0000)`,
         hashTok,
       );
-      throw new Error('parse error');
+      throw new ParseAbort();
     }
 
     return undefined;

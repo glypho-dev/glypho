@@ -1,18 +1,46 @@
 import type { Graph, Group } from './types.js';
 
+/**
+ * A bare label must re-lex as exactly one ID or INTEGER token: `3D` would
+ * split into INTEGER + ID, `_x` and `a-` hit lexer errors, `a--b` lexes an
+ * edge operator.
+ */
+const BARE_LABEL = /^(?:[A-Za-z](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*|[0-9]+)$/;
+
 function needsQuotes(s: string): boolean {
-  // Quote anything that isn't a simple bare identifier (alphanumeric/underscore/hyphen)
-  return !/^[A-Za-z0-9_-]+$/.test(s) || s.includes('--');
+  return !BARE_LABEL.test(s);
 }
 
-function quoteLabel(s: string): string {
+/** Regular double-quoted string with the escapes the lexer understands */
+function escapeQuoted(s: string): string {
+  return '"' + s
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\t/g, '\\t') + '"';
+}
+
+function quoteLabel(raw: string): string {
+  const s = raw.replace(/\r\n?/g, '\n');
   if (s.includes('\n')) {
-    return '"""' + s + '"""';
+    // Triple quotes read best, but they're literal: content can't contain the
+    // closing delimiter or end in a quote (which would merge into it)
+    if (!s.includes('"""') && !s.endsWith('"')) {
+      return '"""' + s + '"""';
+    }
+    return escapeQuoted(s);
   }
-  if (needsQuotes(s)) {
-    return '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
-  }
-  return s;
+  return needsQuotes(s) ? escapeQuoted(s) : s;
+}
+
+const HEX_COLOR = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+/** Style values stay bare when they re-lex as one value token */
+const BARE_STYLE_VALUE = /^[^\s>~=:@^#{}"]+$/;
+
+function formatStyleValue(v: string): string {
+  if (HEX_COLOR.test(v) || BARE_STYLE_VALUE.test(v)) return v;
+  return escapeQuoted(v.replace(/\r\n?/g, '\n'));
 }
 
 function serializeGroup(group: Group, indent: number): string[] {
@@ -63,7 +91,8 @@ export function graphToGlypho(graph: Graph): string {
         line += ' ' + quoteLabel(node.label!);
       }
     }
-    if (node.color) {
+    // Only hex colors are valid .g syntax; anything else would re-parse as a label
+    if (node.color && HEX_COLOR.test(node.color)) {
       line += ' ' + node.color;
     }
     lines.push(line);
@@ -91,7 +120,7 @@ export function graphToGlypho(graph: Graph): string {
     if (edge.label) {
       line += ' ' + quoteLabel(edge.label);
     }
-    if (edge.color) {
+    if (edge.color && HEX_COLOR.test(edge.color)) {
       line += ' ' + edge.color;
     }
     lines.push(line);
@@ -114,7 +143,7 @@ export function graphToGlypho(graph: Graph): string {
   // Styles
   for (const style of graph.styles) {
     const props = Object.entries(style.properties)
-      .map(([k, v]) => `${k}:${v}`)
+      .map(([k, v]) => `${k}:${formatStyleValue(v)}`)
       .join(' ');
     lines.push('$' + style.selector + '{' + props + '}');
   }
