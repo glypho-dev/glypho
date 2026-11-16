@@ -75,10 +75,17 @@ Monorepo uses npm workspaces.
 - **Positions**: `node@x,y^wxh`
 - **Styles**: `$:r{fill:#fff}`
 
+**Parser is strict** — these are loud, line-anchored errors, not silent fixes: multi-word bare labels (must quote), labels on chains (`a>b>c label`), unquoted non-ASCII text, invalid hex colors (3 or 6 digits only), negative coordinates, duplicate node definitions, trailing junk after any statement. Lexer errors surface through `parse()` alongside parser errors, sorted by position.
+
 ## Key Rules
 
 1. Grammar changes → update `spec/grammar.ebnf`, `spec/specification.md`, and `packages/parser/src/types.ts`
 2. All parser changes need tests
-3. Renderer: layout engine and SVG string emitter are pure (no DOM); React component is a thin wrapper
-4. SVG string renderer must escape all user-derived values via `escapeXml()` (labels, style properties, colors); marker IDs derived from colors must be sanitized with `isValidHex()` to prevent SVG injection
-5. Full spec: `spec/specification.md`
+3. Renderer: layout engine and SVG string emitter are pure (no DOM); React component is a thin wrapper. PNG rasterization lives in the CLI (resvg) — the renderer packages emit SVG only
+4. Renderer output changes must regenerate the SVG file snapshots (`packages/renderer/tests/__snapshots__/examples/`): `npm test --workspace=packages/renderer -- -u`, then eyeball the changed `.svg` files before committing
+5. SVG string renderer must escape all user-derived values via `escapeXml()` (labels, style properties, colors); marker IDs derived from colors must be sanitized with `isValidHex()` to prevent SVG injection
+6. Full spec: `spec/specification.md`
+
+## Public Repository
+
+This repo is public and open source. Before every commit and push, review the full staged diff for secrets (keys, tokens, passwords, `.env`), personal data (personal emails, real names, phone numbers) and machine-specific details (absolute local paths like `/Users/...` or `/private/tmp/...`, hostnames, private URLs — including inside generated SVG snapshots, fixtures and logs). Commit with the GitHub noreply address only. If something sensitive is already committed, stop and tell the user before pushing. Checklist and grep command: see AGENTS.md → Public Repository.

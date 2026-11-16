@@ -30,8 +30,9 @@ npm-debug.log*
 # Test coverage
 coverage/
 
-# Claude Code
+# Claude Code (CLAUDE.local.md holds personal, untracked instructions)
 .claude/
+CLAUDE.local.md
 
 # Codex
 .codex/
