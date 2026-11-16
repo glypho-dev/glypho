@@ -1,5 +1,5 @@
 import { parse, parseDot, parseMermaid, type Graph } from '@glypho/parser';
-import { detectFormat, type InputFormat } from './detect-format.js';
+import { detectFormat, parseInputFormat, type InputFormat } from './detect-format.js';
 import { formatInputName, readInput, resolveInputFile } from './io.js';
 
 export type ParseIssue = {
@@ -21,10 +21,14 @@ export type LoadedGraph = {
   errors: ParseIssue[];
 };
 
-export function loadGraph(file?: string): LoadedGraph {
+/**
+ * Read and parse input. The format comes from `from` (a --from value) when
+ * given, otherwise from the file extension (stdin defaults to .g).
+ */
+export function loadGraph(file?: string, from?: string): LoadedGraph {
   const inputFile = resolveInputFile(file);
+  const format = from ? parseInputFormat(from) : detectFormat(inputFile);
   const input = readInput(inputFile);
-  const format = detectFormat(inputFile);
 
   let result: ParseResult;
   switch (format) {

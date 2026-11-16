@@ -7,12 +7,16 @@ Thanks for your interest in contributing!
 ```bash
 git clone https://github.com/glypho-dev/glypho.git
 cd glypho
-npm install
+npm ci
 npm run build
 npm test
 ```
 
-Build order matters: parser -> renderer -> cli. `npm run build` handles this automatically.
+Requires Node.js 22 or later. Use `npm ci` so you get the exact dependency versions CI uses.
+
+Build order matters: parser -> renderer -> cli -> glypho (the umbrella package). `npm run build` handles this automatically.
+
+If you change dependencies, commit the updated `package-lock.json`. CI installs with `npm ci` on Linux, so the lockfile must list every platform's optional native binaries; if `npm ci` fails there with a missing native module, regenerate it from scratch with `rm -rf node_modules package-lock.json && npm install --package-lock-only`.
 
 ## Making Changes
 
@@ -30,6 +34,7 @@ Every parser change needs tests. Run tests for a specific package with:
 npm test --workspace=packages/parser
 npm test --workspace=packages/renderer
 npm test --workspace=packages/cli
+npm test --workspace=packages/glypho
 ```
 
 ## Changing the Grammar

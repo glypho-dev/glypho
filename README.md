@@ -66,8 +66,8 @@ Here's what that looks like compared to Mermaid:
 
 <table>
 <tr>
-<th>Mermaid (11 lines)</th>
-<th>Glypho (8 lines)</th>
+<th>Mermaid (12 lines)</th>
+<th>Glypho (9 lines)</th>
 </tr>
 <tr>
 <td>
@@ -82,8 +82,8 @@ flowchart LR
     idea --> plan
     plan --> build
     build --> test
-    test -- yes --> ship
-    test -- no --> plan
+    test -->|yes| ship
+    test -->|no| plan
 ```
 
 </td>
@@ -94,7 +94,7 @@ flowchart LR
 idea:c Idea
 plan:r Plan
 build:r Build
-test:d Ready?
+test:d "Ready?"
 ship:p Ship
 idea>plan>build>test
 test>ship yes
@@ -111,18 +111,16 @@ Same diagram. Fewer characters, fewer tokens, no brackets, no keywords.
 
 ## Why .g?
 
-The `.g` format was designed to use as few tokens as possible. Early comparisons against other formats representing the same graphs show significant savings:
+The `.g` format was designed to use as few tokens as possible. Running `glypho info` over the 16 `.g` files in [`spec/examples/`](spec/examples/) gives these averages for the same graph in each format:
 
 | Format | Relative Tokens |
 |---|---|
-| Excalidraw JSON | ~500% |
 | JSON Canvas | 100% (baseline) |
-| PlantUML | ~70% |
-| Mermaid | ~50% |
-| Graphviz DOT | ~45% |
-| **Glypho (.g)** | **~20%** |
+| Graphviz DOT | ~31% |
+| Mermaid | ~25% |
+| **Glypho (.g)** | **~17%** |
 
-> These are rough estimates from early-stage comparisons, not formal benchmarks. The exact ratio depends on the diagram. The point is directional: `.g` is meaningfully more compact than alternatives.
+> Averages of per-file ratios. The Mermaid, DOT and JSON Canvas text comes from Glypho's own serializers, and tokens are counted with [`gpt-tokenizer`](https://www.npmjs.com/package/gpt-tokenizer). The exact ratio depends on the diagram: on these examples `.g` ranges from about 4% to 28% of JSON Canvas. Run `glypho info <file>` to measure your own.
 
 ---
 
@@ -191,7 +189,7 @@ Everything below is auto-laid-out from plain `.g` text — click a caption to se
   <sub>Nested groups — <a href="spec/examples/nested-groups.g">nested-groups.g</a></sub>
   <br><br>
   <img src=".github/images/hungry.svg" alt="Small decision flowchart about being hungry"><br>
-  <sub>Four-line decision — <a href="spec/examples/hungry.g">hungry.g</a></sub>
+  <sub>Four-node decision — <a href="spec/examples/hungry.g">hungry.g</a></sub>
 </td>
 </tr>
 </table>
@@ -335,11 +333,13 @@ glypho parse flow.g --compact     # minified JSON AST
 glypho info flow.g                # stats + token comparison across formats
 glypho render flow.g              # render to SVG (writes flow.svg)
 glypho render flow.g -o out.svg   # render to a specific path
+glypho render flow.g -o out.png   # format follows the -o extension
 glypho render flow.g -f png       # render to PNG
 glypho render flow.g -f png --scale 2  # render @2x PNG
 glypho render flow.g -b white     # render with background color
 glypho render flow.mmd            # render Mermaid file to SVG
 glypho render graph.dot           # render DOT file to SVG
+cat flow.mmd | glypho check --from mermaid  # stdin in another format
 glypho preview out.svg            # open SVG in browser
 glypho to mermaid flow.g          # convert .g to Mermaid
 glypho from mermaid flow.mmd      # convert Mermaid to .g
@@ -348,7 +348,7 @@ glypho from dot graph.dot         # convert Graphviz DOT to .g
 
 PNG export supports CJK and other non-Latin scripts. Emoji are a known limitation: the rasterizer (resvg) has no color-font support, and an emoji in a label currently breaks that label's whole text run in the PNG output. Use SVG output when labels contain emoji.
 
-All commands except `preview` accept `-` for stdin or read from stdin when input is piped (`preview` requires an existing `.svg` file). See the [CLI README](packages/cli/README.md) for full details.
+All commands except `preview` accept `-` for stdin or read from stdin when input is piped (`preview` requires an existing `.svg` file). `check`, `parse`, `info` and `render` detect `.mmd`/`.mermaid` and `.dot`/`.gv` by extension; stdin is read as `.g` unless you pass `--from mermaid` or `--from dot`. Requires Node.js 22 or later. See the [CLI README](packages/cli/README.md) for full details.
 
 ---
 

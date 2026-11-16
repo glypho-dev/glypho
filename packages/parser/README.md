@@ -70,6 +70,7 @@ interface Node {
   shape?: Shape                // 'r' | 'd' | 'c' | 'o' | 'p' | 'h'
   color?: string
   classes?: string[]
+  line?: number                // 1-based source line of the definition
 }
 
 interface Edge {
@@ -78,6 +79,7 @@ interface Edge {
   op: EdgeOp                   // '>' | '~' | '=' | '--' | '<>'
   label?: string
   color?: string
+  line?: number                // 1-based source line of the edge
 }
 ```
 

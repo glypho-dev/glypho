@@ -1,6 +1,7 @@
 import { describe, it, expect, afterAll } from 'vitest';
-import { execSync } from 'node:child_process';
-import { existsSync, unlinkSync, readFileSync, writeFileSync } from 'node:fs';
+import { execSync, spawnSync } from 'node:child_process';
+import { existsSync, unlinkSync, readFileSync, writeFileSync, mkdtempSync, rmSync, copyFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -42,6 +43,16 @@ function runWithStderr(args: string, opts: { input?: string } = {}): { stdout: s
   } catch (e: any) {
     return { stdout: e.stdout || '', stderr: e.stderr || '', status: e.status || 1 };
   }
+}
+
+function runCapture(args: string, opts: { input?: string } = {}): { stdout: string; stderr: string; status: number } {
+  const result = spawnSync(`${CLI} ${args}`, {
+    cwd: ROOT,
+    encoding: 'utf-8',
+    input: opts.input,
+    shell: true,
+  });
+  return { stdout: result.stdout, stderr: result.stderr, status: result.status ?? 1 };
 }
 
 afterAll(() => {
@@ -398,5 +409,204 @@ describe('preview', () => {
     const { stderr, status } = runWithStderr(`preview ${svgPath}`);
     expect(status).toBe(1);
     expect(stderr).toContain('preview refused to open a browser');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// input / output error handling
+// ---------------------------------------------------------------------------
+describe('input and output errors', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'glypho-cli-test-'));
+  const input = join(tmp, 'flow.g');
+  copyFileSync(join(EXAMPLES, 'minimal.g'), input);
+  afterAll(() => rmSync(tmp, { recursive: true, force: true }));
+
+  it('prints a clean error for a missing input file', () => {
+    const { stderr, status } = runWithStderr(`check ${join(tmp, 'nope.g')}`);
+    expect(status).toBe(1);
+    expect(stderr).toContain('error: file not found:');
+    expect(stderr).not.toMatch(/\n\s+at /);
+  });
+
+  it('prints a clean error when the input is a directory', () => {
+    const { stderr, status } = runWithStderr(`render ${tmp}`);
+    expect(status).toBe(1);
+    expect(stderr).toContain('is a directory');
+    expect(stderr).not.toMatch(/\n\s+at /);
+  });
+
+  it('rejects empty stdin', () => {
+    const { stderr, status } = runWithStderr('check', { input: '' });
+    expect(status).toBe(1);
+    expect(stderr).toContain('error: <stdin> is empty');
+  });
+
+  it('rejects whitespace-only files', () => {
+    const blank = join(tmp, 'blank.g');
+    writeFileSync(blank, '  \n\n');
+    const { stderr, status } = runWithStderr(`info ${blank}`);
+    expect(status).toBe(1);
+    expect(stderr).toContain('is empty');
+  });
+
+  it('creates missing output directories', () => {
+    const outPath = join(tmp, 'a/b/c/out.svg');
+    run(`render ${input} -o ${outPath}`);
+    expect(readFileSync(outPath, 'utf-8')).toContain('<svg');
+  });
+
+  it('refuses to overwrite the input file', () => {
+    const before = readFileSync(input, 'utf-8');
+    const { stderr, status } = runWithStderr(`render ${input} -o ${input}`);
+    expect(status).toBe(1);
+    expect(stderr).toContain('refusing to overwrite the input file');
+    expect(readFileSync(input, 'utf-8')).toBe(before);
+  });
+
+  it('refuses when the derived output path is the input file', () => {
+    const svgInput = join(tmp, 'diagram.svg');
+    writeFileSync(svgInput, '>LR\na>b\n');
+    const { stderr, status } = runWithStderr(`render ${svgInput}`);
+    expect(status).toBe(1);
+    expect(stderr).toContain('refusing to overwrite');
+    expect(readFileSync(svgInput, 'utf-8')).toBe('>LR\na>b\n');
+  });
+
+  it('prints a clean error when the output path is a directory', () => {
+    const { stderr, status } = runWithStderr(`render ${input} -o ${tmp}`);
+    expect(status).toBe(1);
+    expect(stderr).toMatch(/^error: cannot write/m);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// render option validation and format inference
+// ---------------------------------------------------------------------------
+describe('render options', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'glypho-cli-opts-'));
+  const input = join(EXAMPLES, 'minimal.g');
+  afterAll(() => rmSync(tmp, { recursive: true, force: true }));
+
+  it.each(['abc', '0', '-5', '12px', '1.5'])('rejects --width %s', (value) => {
+    const outPath = join(tmp, `w-${value}.svg`);
+    const { stderr, status } = runWithStderr(`render ${input} --width=${value} -o ${outPath}`);
+    expect(status).toBe(1);
+    expect(stderr).toContain('expected a positive integer');
+    expect(existsSync(outPath)).toBe(false);
+  });
+
+  it('uses the last value when --width is repeated', () => {
+    const outPath = join(tmp, 'repeat.svg');
+    run(`render ${input} --width 100 --width 200 -o ${outPath}`);
+    const svg = readFileSync(outPath, 'utf-8');
+    expect(svg).toMatch(/<svg[^>]*\bwidth="200"/);
+    expect(svg).not.toContain('NaN');
+  });
+
+  it.each(['abc', '0', '-1', 'Infinity'])('rejects --scale %s', (value) => {
+    const outPath = join(tmp, `s-${value}.png`);
+    const { stderr, status } = runWithStderr(`render ${input} -f png --scale=${value} -o ${outPath}`);
+    expect(status).toBe(1);
+    expect(stderr).toContain('expected a positive number');
+    expect(stderr).not.toMatch(/\n\s+at /);
+    expect(existsSync(outPath)).toBe(false);
+  });
+
+  it('rejects an invalid PNG background color cleanly', () => {
+    const outPath = join(tmp, 'bad-bg.png');
+    const { stderr, status } = runWithStderr(`render ${input} -f png -b notacolor -o ${outPath}`);
+    expect(status).toBe(1);
+    expect(stderr).toContain("invalid --background color 'notacolor'");
+    expect(existsSync(outPath)).toBe(false);
+  });
+
+  it('infers PNG from the --output extension', () => {
+    const outPath = join(tmp, 'inferred.png');
+    run(`render ${input} -o ${outPath}`);
+    const buf = readFileSync(outPath);
+    expect(buf.subarray(0, 4)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  });
+
+  it('rejects a --format that conflicts with the --output extension', () => {
+    const outPath = join(tmp, 'conflict.png');
+    const { stderr, status } = runWithStderr(`render ${input} -f svg -o ${outPath}`);
+    expect(status).toBe(1);
+    expect(stderr).toContain('conflicts with --output');
+    expect(existsSync(outPath)).toBe(false);
+  });
+
+  it('warns that --scale is ignored for SVG output', () => {
+    const outPath = join(tmp, 'scale.svg');
+    const { stderr } = runCapture(`render ${input} --scale 2 -o ${outPath}`);
+    expect(stderr).toContain('--scale only applies to PNG');
+    expect(existsSync(outPath)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// input format selection
+// ---------------------------------------------------------------------------
+describe('input formats', () => {
+  const mermaid = 'flowchart LR\n  a --> b\n  b --> c\n';
+  const dot = 'digraph { a -> b; b -> c; }\n';
+
+  it('check detects Mermaid by extension', () => {
+    const out = run(`check ${join(EXAMPLES, 'how-llms-work.mmd')}`);
+    expect(out).toMatch(/^ok: /);
+  });
+
+  it('info detects DOT by extension', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'glypho-cli-dot-'));
+    try {
+      const file = join(tmp, 'graph.dot');
+      writeFileSync(file, dot);
+      const json = JSON.parse(run(`info --json ${file}`));
+      expect(json.nodes).toBe(3);
+      expect(json.edges).toBe(2);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('check --from mermaid reads Mermaid from stdin', () => {
+    const out = run('check --from mermaid', { input: mermaid });
+    expect(out).toContain('3 nodes, 2 edges');
+  });
+
+  it('parse --from dot reads DOT from stdin', () => {
+    const graph = JSON.parse(run('parse --compact --from dot', { input: dot }));
+    expect(graph.nodes).toHaveLength(3);
+  });
+
+  it('render --from mermaid renders stdin', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'glypho-cli-from-'));
+    try {
+      const outPath = join(tmp, 'flow.svg');
+      run(`render --from mermaid -o ${outPath}`, { input: mermaid });
+      expect(readFileSync(outPath, 'utf-8')).toContain('<svg');
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('stdin without --from is still parsed as .g', () => {
+    const { status } = runWithStderr('check', { input: mermaid });
+    expect(status).toBe(1);
+  });
+
+  it('rejects an unknown --from value', () => {
+    const { stderr, status } = runWithStderr('check --from yaml', { input: '>LR\na>b\n' });
+    expect(status).toBe(1);
+    expect(stderr).toContain("invalid --from 'yaml'");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// version
+// ---------------------------------------------------------------------------
+describe('--version', () => {
+  it('prints the version from package.json', () => {
+    const pkg = JSON.parse(readFileSync(join(PKG_ROOT, 'package.json'), 'utf-8'));
+    expect(run('--version').trim()).toBe(pkg.version);
   });
 });

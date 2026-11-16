@@ -12,6 +12,9 @@
   },
   "keywords": ["graph", "diagram", "renderer", "svg", "react", "dagre", "glypho"],
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -22,6 +25,11 @@
     "./svg": {
       "types": "./dist/svg.d.ts",
       "default": "./dist/svg.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "svg": ["./dist/svg.d.ts"]
     }
   },
   "files": ["dist"],
