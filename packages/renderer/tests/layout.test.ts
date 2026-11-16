@@ -16,6 +16,35 @@ function makeGraph(overrides: Partial<Graph> = {}): Graph {
   };
 }
 
+/** Does any segment of a polyline cross the rectangle? (Liang–Barsky) */
+function polylineHitsRect(
+  points: Array<{ x: number; y: number }>,
+  rect: { x: number; y: number; width: number; height: number },
+): boolean {
+  for (let k = 0; k + 1 < points.length; k++) {
+    const p = points[k];
+    const dx = points[k + 1].x - p.x;
+    const dy = points[k + 1].y - p.y;
+    let t0 = 0;
+    let t1 = 1;
+    let hit = true;
+    for (const [pp, qq] of [
+      [-dx, p.x - rect.x], [dx, rect.x + rect.width - p.x],
+      [-dy, p.y - rect.y], [dy, rect.y + rect.height - p.y],
+    ]) {
+      if (pp === 0) {
+        if (qq < 0) { hit = false; break; }
+        continue;
+      }
+      const t = qq / pp;
+      if (pp < 0) { if (t > t1) { hit = false; break; } if (t > t0) t0 = t; }
+      else { if (t < t0) { hit = false; break; } if (t < t1) t1 = t; }
+    }
+    if (hit) return true;
+  }
+  return false;
+}
+
 describe('computeLayout', () => {
   it('handles empty graph', () => {
     const result = computeLayout(makeGraph());
@@ -430,6 +459,96 @@ describe('computeLayout regressions', () => {
     const [labelled] = result.edges;
     for (const node of result.nodes) {
       expect(overlap(labelRect(labelled.labelBox!), node)).toBe(false);
+    }
+  });
+  // Pinned nodes (`id@x,y`) used to sit wherever their coordinates fell in the
+  // auto layout, so a group of them landed on top of an auto-laid group
+  // (glypho.dev Syntax Guide: Layout over Semantic Elements).
+  it('keeps a group of pinned nodes clear of auto-laid groups', () => {
+    const source = [
+      '>TB',
+      'hub>a', 'hub>b', 'hub>c', 'hub>d',
+      'hub>p1 position', 'hub>p2 "position + size"',
+      'p1@100,150', 'p2@100,200^140x40',
+      '@auto{a b c d}', '@pinned{p1 p2}',
+    ].join('\n');
+    const result = layoutOf(source);
+    const byId = new Map(result.nodes.map(n => [n.id, n]));
+    // Pinned coordinates and sizes are honoured exactly
+    expect(byId.get('p1')).toMatchObject({ x: 100, y: 150 });
+    expect(byId.get('p2')).toMatchObject({ x: 100, y: 200, width: 140, height: 40 });
+    const auto = result.groups.find(g => g.group.id === 'auto')!;
+    const pinned = result.groups.find(g => g.group.id === 'pinned')!;
+    expect(overlap(auto, pinned)).toBe(false);
+    for (let i = 0; i < result.nodes.length; i++) {
+      for (let j = i + 1; j < result.nodes.length; j++) {
+        expect(overlap(result.nodes[i], result.nodes[j]), `${result.nodes[i].id}/${result.nodes[j].id}`).toBe(false);
+      }
+    }
+    // Labels on the straight edges to pinned nodes clear every node
+    for (const edge of result.edges) {
+      if (!edge.labelBox) continue;
+      for (const node of result.nodes) {
+        expect(overlap(labelRect(edge.labelBox), node), `${edge.edge.label} over ${node.id}`).toBe(false);
+      }
+    }
+  });
+
+  it('compresses the auto-laid part of a graph that also has pinned nodes', () => {
+    const chain = 'a>b\nb>c\nc>d x\n@g{a b c d}';
+    const pinnedToo = layoutOf(`${chain}\npin@0,0`);
+    const plain = layoutOf(chain);
+    const span = (result: ReturnType<typeof layoutOf>) => {
+      const ids = new Set(['a', 'b', 'c', 'd']);
+      const nodes = result.nodes.filter(n => ids.has(n.id));
+      return Math.max(...nodes.map(n => n.y + n.height)) - Math.min(...nodes.map(n => n.y));
+    };
+    // One pinned node used to switch compression off for the whole graph
+    expect(span(pinnedToo)).toBeCloseTo(span(plain), 0);
+  });
+
+  it('spaces an unlabelled chain inside a group like the same chain outside one', () => {
+    const gaps = (source: string) => {
+      const byId = new Map(layoutOf(source).nodes.map(n => [n.id, n]));
+      return [['a', 'b'], ['b', 'c']].map(([from, to]) => {
+        const upper = byId.get(from)!;
+        return byId.get(to)!.y - (upper.y + upper.height);
+      });
+    };
+    const flat = gaps('a>b\nb>c');
+    expect(gaps('a>b\nb>c\n@g{a b c}')).toEqual(flat);
+    // ...and a labelled edge elsewhere in the graph does not stretch it
+    expect(gaps('a>b\nb>c\nx>y "a label"\n@g{a b c}\n@h{x y}')).toEqual(flat);
+  });
+
+  it('keeps edges off the rank-mates of their endpoints (cli example)', () => {
+    const source = readFileSync(resolve(process.cwd(), '../../spec/examples/cli.g'), 'utf8');
+    const result = layoutOf(source);
+    const bad: string[] = [];
+    for (const edge of result.edges) {
+      for (const node of result.nodes) {
+        if (node.id === edge.edge.from || node.id === edge.edge.to) continue;
+        const shrunk = { x: node.x + 3, y: node.y + 3, width: node.width - 6, height: node.height - 6 };
+        if (polylineHitsRect(edge.points, shrunk)) bad.push(`${edge.edge.from}>${edge.edge.to} through ${node.id}`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it('enters a compacted row of terminal nodes from the flow side', () => {
+    // x and v belong to two groups each, so dagre cannot keep @out together
+    // and compaction packs them into a row of their own.
+    const result = layoutOf('h>x\nh>y\nh>z\nh>w\nh>v\n@a{x y}\n@b{z w v}\n@out{x v}');
+    const byId = new Map(result.nodes.map(n => [n.id, n]));
+    for (const target of ['x', 'v']) {
+      const edge = result.edges.find(e => e.edge.to === target)!;
+      const node = byId.get(target)!;
+      expect(edge.points).toHaveLength(3);
+      const [, turn, end] = edge.points;
+      // The turn sits straight above the target, so the last leg drops in
+      expect(turn.x).toBeCloseTo(node.x + node.width / 2, 5);
+      expect(turn.y).toBeLessThan(node.y);
+      expect(end.y).toBeCloseTo(node.y, 0);
     }
   });
 });

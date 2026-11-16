@@ -58,6 +58,12 @@ function isIdContinue(ch: string): boolean {
 /** Characters that end a raw style value: whitespace and the grammar's reserved set */
 const STYLE_VALUE_STOP = new Set([' ', '\t', '\n', '\r', '>', '~', '=', ':', '@', '^', '#', '{', '}', '"']);
 
+/** Characters that end the word an unexpected character is reported in */
+const BARE_WORD_STOP = new Set([' ', '\t', '\n', '\r', '"', '{', '}']);
+
+/** `prop:` — where the next style property starts inside a style block */
+const STYLE_PROPERTY_START = /^[A-Za-z_][A-Za-z0-9_-]*:/;
+
 /** A bare style value is ASCII-only, like bare labels; anything else must be quoted */
 const BARE_STYLE_VALUE = /^[A-Za-z0-9._%,+-]+$/;
 
@@ -209,20 +215,47 @@ export class Lexer {
 
   private readStyleValue(): void {
     const startCol = this.column;
-    let value = '';
-    while (this.pos < this.input.length && !STYLE_VALUE_STOP.has(this.input[this.pos])) {
-      value += this.input[this.pos];
-      this.advance();
+    const property = this.tokens.length >= 2 && this.tokens[this.tokens.length - 2].type === TokenType.ID
+      ? this.tokens[this.tokens.length - 2].value
+      : undefined;
+    let value = this.readStyleValueWord();
+    let multiWord = false;
+    // `font:Noto Sans` — words after the value that do not start the next
+    // `prop:` belong to it. Take them in, so the error names the whole value
+    // instead of tripping over `Sans` as a property without a colon.
+    for (;;) {
+      let ahead = this.pos;
+      while (this.input[ahead] === ' ' || this.input[ahead] === '\t') ahead++;
+      if (ahead === this.pos || ahead >= this.input.length) break;
+      const next = this.input[ahead];
+      if (STYLE_VALUE_STOP.has(next) || STYLE_PROPERTY_START.test(this.input.slice(ahead, ahead + 64))) break;
+      while (this.pos < ahead) this.advance();
+      value += ' ' + this.readStyleValueWord();
+      multiWord = true;
     }
-    if (!BARE_STYLE_VALUE.test(value)) {
+    if (multiWord || !BARE_STYLE_VALUE.test(value)) {
+      const quoted = property ? `${property}:"${value}"` : `"${value}"`;
+      const why = multiWord
+        ? 'a value with spaces'
+        : 'bare values may only use ASCII letters, digits and . _ % , + -';
       this.errors.push({
-        message: `Style value '${value}' must be quoted — bare values may only use ASCII letters, digits and . _ % , + -`,
+        message: `Style value '${value}' must be quoted (${why}): ${quoted}`,
         line: this.line,
         column: startCol,
       });
     }
     this.tokens.push({ type: TokenType.STYLE_VALUE, value, line: this.line, column: startCol });
   }
+
+  private readStyleValueWord(): string {
+    let word = '';
+    while (this.pos < this.input.length && !STYLE_VALUE_STOP.has(this.input[this.pos])) {
+      word += this.input[this.pos];
+      this.advance();
+    }
+    return word;
+  }
+
 
   private peek(offset: number): string | undefined {
     return this.input[this.pos + offset];
@@ -442,8 +475,23 @@ export class Lexer {
       return;
     }
 
-    this.errors.push({ message: `Unexpected character '${ch}'`, line, column });
-    this.advance();
+    // Punctuation in what is meant as a bare label (`Pass?`, `C++`, `+`):
+    // report the whole word once, with the quoted form to use instead.
+    const prev = this.tokens[this.tokens.length - 1];
+    const glued = prev !== undefined
+      && (prev.type === TokenType.ID || prev.type === TokenType.INTEGER)
+      && prev.line === line && prev.column + prev.value.length === column;
+    let run = '';
+    while (this.pos < this.input.length && !BARE_WORD_STOP.has(this.input[this.pos])) {
+      run += this.input[this.pos];
+      this.advance();
+    }
+    const word = (glued ? prev.value : '') + run;
+    this.errors.push({
+      message: `Unexpected character '${ch}' in '${word}' — a label with punctuation must be quoted: "${word}"`,
+      line: glued ? prev.line : line,
+      column: glued ? prev.column : column,
+    });
   }
 
   private readId(): void {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pointsToPath, pathMidpoint } from '../src/edges/paths.js';
+import { pointsToPath, pathMidpoint, shortenEnd, shortenStart } from '../src/edges/paths.js';
 
 describe('pointsToPath', () => {
   it('returns empty for less than 2 points', () => {
@@ -45,5 +45,28 @@ describe('pathMidpoint', () => {
       { x: 100, y: 0 },
     ]);
     expect(mid).toEqual({ x: 50, y: 50 });
+  });
+});
+
+describe('shortenEnd / shortenStart', () => {
+  it('trims the last segment when it is long enough', () => {
+    expect(shortenEnd([{ x: 0, y: 0 }, { x: 30, y: 0 }], 10)).toEqual([{ x: 0, y: 0 }, { x: 20, y: 0 }]);
+    expect(shortenStart([{ x: 0, y: 0 }, { x: 30, y: 0 }], 10)).toEqual([{ x: 10, y: 0 }, { x: 30, y: 0 }]);
+  });
+
+  it('walks back over segments shorter than the arrowhead', () => {
+    // Dense routes end in 8px segments; the arrow must still stop 10px short
+    const pts = [0, 8, 16, 24, 32, 40].map(x => ({ x, y: 0 }));
+    const end = shortenEnd(pts, 10);
+    expect(end[end.length - 1]).toEqual({ x: 30, y: 0 });
+    expect(end.every(p => p.x <= 30)).toBe(true);
+    const start = shortenStart(pts, 10);
+    expect(start[0]).toEqual({ x: 10, y: 0 });
+    expect(start.every(p => p.x >= 10)).toBe(true);
+  });
+
+  it('leaves a path shorter than the trim alone', () => {
+    const pts = [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 8, y: 0 }];
+    expect(shortenEnd(pts, 10)).toEqual(pts);
   });
 });

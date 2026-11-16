@@ -10,9 +10,10 @@ const DEFAULT_RANK_SEP = 80;
 const GROUP_PADDING = 24;
 const GROUP_LABEL_HEIGHT = 24;
 // Compound layout inserts empty border ranks around every cluster, which
-// reads as dead space. Gaps between occupied rank bands are compressed to
-// this budget: enough for two group borders (2 × padding + label = 72) plus
-// daylight, close to the flat layout's ranksep.
+// reads as dead space, so gaps between occupied bands are compressed to what
+// their borders and labels need. Along the rank axis the floor is the plain
+// ranksep; across it gaps keep at least this much (two group borders,
+// 2 × padding + label = 72, plus daylight).
 const MAX_RANK_GAP = 104;
 const EMPTY_GROUP_MIN_WIDTH = 96;
 const EMPTY_GROUP_MIN_HEIGHT = GROUP_LABEL_HEIGHT + GROUP_PADDING * 2;
@@ -20,6 +21,23 @@ const EMPTY_GROUP_MIN_HEIGHT = GROUP_LABEL_HEIGHT + GROUP_PADDING * 2;
 const EDGE_LABEL_CLEARANCE = 12;
 // How far a fallback self-loop bulges past the node's right edge.
 const SELF_LOOP_REACH = 28;
+// Space kept between the auto-laid block and pinned (`id@x,y`) content.
+const PINNED_CLEARANCE = 32;
+// How far before a compacted row an edge turns to enter its target.
+const COMPACT_APPROACH = 28;
+// A routed edge's first/last leg counts as flat (and gets squared off) when
+// its sideways run exceeds this many pixels and this multiple of its rise.
+const FLAT_LEG_MIN_RUN = 60;
+const FLAT_LEG_RATIO = 2;
+// Corner radius used when squaring off a flat leg.
+const FLAT_LEG_CORNER = 16;
+// A squared-off run moves out of a group box only when that is a short hop
+// (about one group header); deeper inside, dagre's own rank is kept.
+const FLAT_LEG_MAX_SHIFT = 64;
+// Gap between a squared-off leg's sideways run and the group box it leaves.
+const FLAT_LEG_GROUP_MARGIN = 10;
+// Above this many (dx, dy) pairs, placement only tries single-axis moves.
+const MAX_PLACEMENT_CANDIDATES = 250_000;
 
 function subtreeHasNodes(group: Group, nodeIds: { has(id: string): boolean }): boolean {
   return group.members.some(id => nodeIds.has(id))
@@ -198,6 +216,128 @@ function selfLoopPoints(node: LayoutNode): Point[] {
     { x: outX, y: cy + spread },
     { x: cx, y: cy },
   ];
+}
+
+/**
+ * Route for an edge into a node that post-dagre compaction packed into a
+ * row. A straight line from a distant source runs along the row, behind its
+ * other nodes; entering from the flow side keeps the edge off them.
+ */
+function approachFromFlowSide(from: Point, target: LayoutNode, direction: string): Point[] {
+  const cx = target.x + target.width / 2;
+  const cy = target.y + target.height / 2;
+  const to = { x: cx, y: cy };
+  let approach: Point;
+  switch (direction) {
+    case 'LR': approach = { x: target.x - COMPACT_APPROACH, y: cy }; break;
+    case 'RL': approach = { x: target.x + target.width + COMPACT_APPROACH, y: cy }; break;
+    case 'BT': approach = { x: cx, y: target.y + target.height + COMPACT_APPROACH }; break;
+    default: approach = { x: cx, y: target.y - COMPACT_APPROACH };
+  }
+  // Only when the source really is upstream; otherwise a direct line is best.
+  const upstream = direction === 'LR' ? from.x < approach.x
+    : direction === 'RL' ? from.x > approach.x
+      : direction === 'BT' ? from.y > approach.y
+        : from.y < approach.y;
+  return upstream ? [{ ...from }, approach, to] : [{ ...from }, to];
+}
+
+/**
+ * Dagre can leave a node's first (or last) leg running almost flat along its
+ * rank when the next dummy point sits far to the side — typically when a
+ * group box pushes the other end away. That leg then slices through the
+ * node's rank-mates. Square it off instead: leave (or enter) along the flow,
+ * and make the sideways run in the dummy rank, where no nodes sit.
+ */
+function squareFlatEndLegs(
+  points: Point[],
+  from: Point,
+  to: Point,
+  rankAxisIsX: boolean,
+  hints: {
+    /** Preferred rank coordinate for the first leg's run (outside the source's groups) */
+    exitRank?: number;
+    /** Preferred rank coordinate for the last leg's run (outside the target's groups) */
+    entryRank?: number;
+    /** Where the edge label sits; that route point must not move */
+    labelPoint?: Point;
+    /** +1 when ranks grow along the axis (TB, LR), -1 for BT and RL */
+    forward?: number;
+  } = {},
+): Point[] {
+  if (points.length < 3) return points;
+  const rank = (p: Point) => (rankAxisIsX ? p.x : p.y);
+  const cross = (p: Point) => (rankAxisIsX ? p.y : p.x);
+  const make = (crossValue: number, rankValue: number): Point => (rankAxisIsX
+    ? { x: rankValue, y: crossValue }
+    : { x: crossValue, y: rankValue });
+  const forward = hints.forward ?? 1;
+  // `downstream` is the far end of the leg along the flow. Back edges (dagre
+  // routes them against the flow) keep their curves: squaring them would
+  // send them out of the wrong side of the node.
+  const isFlat = (upstream: Point, downstream: Point) => {
+    const rise = (rank(downstream) - rank(upstream)) * forward;
+    const run = Math.abs(cross(downstream) - cross(upstream));
+    return rise > 0 && run > FLAT_LEG_MIN_RUN && run > FLAT_LEG_RATIO * rise;
+  };
+  // Corner points: one on the node's axis, one a short way along the run so
+  // the path smoothing turns tightly instead of cutting the corner.
+  const corner = (center: Point, next: Point): Point[] => {
+    const run = cross(next) - cross(center);
+    const radius = Math.sign(run) * Math.min(FLAT_LEG_CORNER, Math.abs(run) / 2);
+    return [make(cross(center), rank(next)), make(cross(center) + radius, rank(next))];
+  };
+
+  const isLabelPoint = (p: Point) => hints.labelPoint !== undefined
+    && Math.abs(p.x - hints.labelPoint.x) < 0.5 && Math.abs(p.y - hints.labelPoint.y) < 0.5;
+  const strictlyBetween = (value: number, a: number, b: number) =>
+    value > Math.min(a, b) && value < Math.max(a, b);
+
+  let result = points.map(p => ({ ...p }));
+  // Last leg: run at `entryRank` (just outside the target's groups) when it
+  // lies between the ends; dummy points past it, all inside the target's
+  // group padding, are dropped — unless one carries the label.
+  if (isFlat(result[result.length - 2], to)) {
+    const last = result.length - 1;
+    let keep = last - 1; // index of the point the run starts from
+    let runRank = rank(result[keep]);
+    const wanted = hints.entryRank;
+    if (wanted !== undefined && strictlyBetween(wanted, rank(result[0]), rank(result[last]))
+      && Math.abs(wanted - rank(result[last - 1])) <= FLAT_LEG_MAX_SHIFT) {
+      let k = last - 1;
+      while (k > 0 && !strictlyBetween(rank(result[k]), rank(result[0]), wanted) && !isLabelPoint(result[k])) k--;
+      if (!isLabelPoint(result[k]) || strictlyBetween(rank(result[k]), rank(result[0]), wanted)) {
+        keep = k;
+        runRank = wanted;
+      }
+    }
+    const start = make(cross(result[keep]), runRank);
+    const [onAxis, along] = corner(to, start);
+    const head = result.slice(0, keep + 1);
+    if (rank(start) !== rank(result[keep])) head.push(start);
+    result = [...head, along, onAxis, result[last]];
+  }
+  // First leg, mirrored: run at `exitRank`, just outside the source's groups.
+  if (isFlat(from, result[1])) {
+    const last = result.length - 1;
+    let keep = 1; // index of the point the run ends at
+    let runRank = rank(result[keep]);
+    const wanted = hints.exitRank;
+    if (wanted !== undefined && strictlyBetween(wanted, rank(result[0]), rank(result[last]))
+      && Math.abs(wanted - rank(result[1])) <= FLAT_LEG_MAX_SHIFT) {
+      let k = 1;
+      while (k < last && !strictlyBetween(rank(result[k]), wanted, rank(result[last])) && !isLabelPoint(result[k])) k++;
+      if (k < last && (!isLabelPoint(result[k]) || strictlyBetween(rank(result[k]), wanted, rank(result[last])))) {
+        keep = k;
+        runRank = wanted;
+      }
+    }
+    const end = make(cross(result[keep]), runRank);
+    const tail = result.slice(keep);
+    if (rank(end) !== rank(result[keep])) tail.unshift(end);
+    result = [result[0], ...corner(from, end), ...tail];
+  }
+  return result;
 }
 
 function computeGroupLayouts(
@@ -546,6 +686,216 @@ function assignClusterParents(
   return assignment;
 }
 
+/** Every node id in a group, including its nested groups' members */
+function memberIdSet(group: Group): Set<string> {
+  const ids = new Set(group.members);
+  for (const child of group.children ?? []) {
+    for (const id of memberIdSet(child)) ids.add(id);
+  }
+  return ids;
+}
+
+function boundsOf(rects: Rect[]): { x1: number; y1: number; x2: number; y2: number } {
+  return {
+    x1: Math.min(...rects.map(rect => rect.x)),
+    y1: Math.min(...rects.map(rect => rect.y)),
+    x2: Math.max(...rects.map(rect => rect.x + rect.width)),
+    y2: Math.max(...rects.map(rect => rect.y + rect.height)),
+  };
+}
+
+/**
+ * Offset for the auto-laid block of a graph that also has pinned nodes.
+ * Pinned nodes keep their absolute coordinates, so the auto block moves:
+ * to the offset that clears every pinned obstacle (pinned nodes, and groups
+ * made only of pinned nodes) with the smallest overall bounding box — often
+ * a hole in the auto layout. On ties it keeps auto↔pinned edges short, then
+ * moves the block as little as possible.
+ */
+function placeAutoBlock(
+  graph: Graph,
+  g: dagre.graphlib.Graph,
+  nodeMap: ReadonlyMap<string, LayoutNode>,
+  pinnedIds: ReadonlySet<string>,
+  placeholderKeys: ReadonlyMap<Group, string>,
+  edgeLabels: ReadonlyArray<{ width: number; height: number } | undefined>,
+  mapX: (value: number) => number,
+  mapY: (value: number) => number,
+): { dx: number; dy: number } {
+  const placeholderRects = new Map<Group, Rect>();
+  for (const [group, key] of placeholderKeys) {
+    const rect = dagreRect(g.node(key));
+    if (rect) {
+      placeholderRects.set(group, { x: mapX(rect.x), y: mapY(rect.y), width: rect.width, height: rect.height });
+    }
+  }
+
+  const items: Rect[] = [];
+  const obstacles: Rect[] = [];
+  for (const node of nodeMap.values()) {
+    (pinnedIds.has(node.id) ? obstacles : items).push(node);
+  }
+  for (const layoutGroup of computeGroupLayouts(graph.groups, nodeMap, placeholderRects)) {
+    const ids = [...memberIdSet(layoutGroup.group)].filter(id => nodeMap.has(id));
+    if (ids.length === 0) {
+      if (placeholderRects.has(layoutGroup.group)) items.push(layoutGroup);
+      continue;
+    }
+    const pinnedCount = ids.filter(id => pinnedIds.has(id)).length;
+    // Groups mixing pinned and auto members stretch across both; they can
+    // neither move nor act as obstacles.
+    if (pinnedCount === ids.length) obstacles.push(layoutGroup);
+    else if (pinnedCount === 0) items.push(layoutGroup);
+  }
+  graph.edges.forEach((edge, index) => {
+    const label = edgeLabels[index];
+    if (!label || pinnedIds.has(edge.from) || pinnedIds.has(edge.to)) return;
+    if (!g.hasNode(edge.from) || !g.hasNode(edge.to)) return;
+    const rect = dagreRect(g.edge(edge.from, edge.to, edgeName(index)));
+    if (rect) {
+      items.push({
+        x: mapX(rect.x + rect.width / 2) - label.width / 2,
+        y: mapY(rect.y + rect.height / 2) - label.height / 2,
+        width: label.width,
+        height: label.height,
+      });
+    }
+  });
+  if (items.length === 0 || obstacles.length === 0) return { dx: 0, dy: 0 };
+
+  // Edges between the auto block and pinned nodes are drawn straight, so
+  // among equally compact spots prefer the one that keeps them short.
+  const links: Array<{ auto: Point; pinned: Point; label?: { width: number; height: number } }> = [];
+  graph.edges.forEach((edge, index) => {
+    const fromPinned = pinnedIds.has(edge.from);
+    if (fromPinned === pinnedIds.has(edge.to)) return;
+    const autoNode = nodeMap.get(fromPinned ? edge.to : edge.from);
+    const pinnedNode = nodeMap.get(fromPinned ? edge.from : edge.to);
+    if (!autoNode || !pinnedNode) return;
+    links.push({
+      auto: { x: autoNode.x + autoNode.width / 2, y: autoNode.y + autoNode.height / 2 },
+      pinned: { x: pinnedNode.x + pinnedNode.width / 2, y: pinnedNode.y + pinnedNode.height / 2 },
+      label: edgeLabels[index],
+    });
+  });
+  const gap = PINNED_CLEARANCE;
+  const autoNodeRects = [...nodeMap.values()].filter(node => !pinnedIds.has(node.id));
+  // Item i hits obstacle o exactly for offsets inside an open box in
+  // (dx, dy) space; precompute those boxes so each check is a few compares.
+  const forbidden = new Float64Array(items.length * obstacles.length * 4);
+  let fill = 0;
+  for (const item of items) {
+    for (const obstacle of obstacles) {
+      forbidden[fill++] = obstacle.x - gap - item.x - item.width;
+      forbidden[fill++] = obstacle.x + obstacle.width + gap - item.x;
+      forbidden[fill++] = obstacle.y - gap - item.y - item.height;
+      forbidden[fill++] = obstacle.y + obstacle.height + gap - item.y;
+    }
+  }
+  const EPS = 0.01;
+  const inBox = (k: number, dx: number, dy: number) => dx > forbidden[k] + EPS && dx < forbidden[k + 1] - EPS
+    && dy > forbidden[k + 2] + EPS && dy < forbidden[k + 3] - EPS;
+  let lastHit = 0;
+  const hitsObstacle = (dx: number, dy: number): boolean => {
+    // Rejections cluster, so try the box that rejected last time first.
+    if (inBox(lastHit, dx, dy)) return true;
+    for (let k = 0; k < forbidden.length; k += 4) {
+      if (inBox(k, dx, dy)) {
+        lastHit = k;
+        return true;
+      }
+    }
+    return false;
+  };
+  const clear = (dx: number, dy: number): boolean => !hitsObstacle(dx, dy) && links.every(link => {
+    // The straight edge's label (drawn at its midpoint) must clear every node.
+    if (!link.label) return true;
+    const labelRect = {
+      x: (link.auto.x + dx + link.pinned.x) / 2 - link.label.width / 2,
+      y: (link.auto.y + dy + link.pinned.y) / 2 - link.label.height / 2,
+      width: link.label.width,
+      height: link.label.height,
+    };
+    return obstacles.every(obstacle => !rectsOverlap(labelRect, obstacle, EDGE_LABEL_CLEARANCE / 2))
+      && autoNodeRects.every(node => !rectsOverlap(labelRect, {
+        x: node.x + dx, y: node.y + dy, width: node.width, height: node.height,
+      }, EDGE_LABEL_CLEARANCE / 2));
+  });
+  if (clear(0, 0)) return { dx: 0, dy: 0 };
+
+  // A tight placement puts some item edge exactly `gap` from some obstacle
+  // edge on each axis (or leaves that axis alone).
+  const round = (value: number) => Math.round(value * 100) / 100;
+  const dxSet = new Set<number>([0]);
+  const dySet = new Set<number>([0]);
+  for (const obstacle of obstacles) {
+    for (const item of items) {
+      dxSet.add(round(obstacle.x + obstacle.width + gap - item.x));
+      dxSet.add(round(obstacle.x - gap - item.x - item.width));
+      dySet.add(round(obstacle.y + obstacle.height + gap - item.y));
+      dySet.add(round(obstacle.y - gap - item.y - item.height));
+    }
+  }
+  const block = boundsOf(items);
+  const pinned = boundsOf(obstacles);
+  const spanX = (dx: number) => Math.max(block.x2 + dx, pinned.x2) - Math.min(block.x1 + dx, pinned.x1);
+  const spanY = (dy: number) => Math.max(block.y2 + dy, pinned.y2) - Math.min(block.y1 + dy, pinned.y1);
+
+  const linkLength = (dx: number, dy: number) => {
+    let sum = 0;
+    for (const link of links) {
+      const ex = link.auto.x + dx - link.pinned.x;
+      const ey = link.auto.y + dy - link.pinned.y;
+      sum += Math.sqrt(ex * ex + ey * ey);
+    }
+    return sum;
+  };
+
+  const dxs = [...dxSet];
+  const dys = [...dySet];
+  const widths = dxs.map(spanX);
+  const heights = dys.map(spanY);
+  const fullGrid = dxs.length * dys.length <= MAX_PLACEMENT_CANDIDATES;
+  const forEachCandidate = (visit: (dx: number, dy: number, area: number) => void) => {
+    if (fullGrid) {
+      for (let i = 0; i < dxs.length; i++) {
+        for (let j = 0; j < dys.length; j++) visit(dxs[i], dys[j], widths[i] * heights[j]);
+      }
+    } else {
+      for (let i = 0; i < dxs.length; i++) visit(dxs[i], 0, widths[i] * spanY(0));
+      for (let j = 0; j < dys.length; j++) visit(0, dys[j], spanX(0) * heights[j]);
+    }
+  };
+  let minArea = Infinity;
+  let maxArea = 0;
+  forEachCandidate((_dx, _dy, area) => {
+    minArea = Math.min(minArea, area);
+    maxArea = Math.max(maxArea, area);
+  });
+  // Walk outward in bands of near-equal area (1%, then 5% steps). Within a
+  // band, short auto↔pinned links win, then the smallest move.
+  let lower = -Infinity;
+  let upper = minArea * 1.01;
+  for (;;) {
+    const band: Array<{ dx: number; dy: number; links: number; move: number }> = [];
+    forEachCandidate((dx, dy, area) => {
+      // Cheap obstacle test first; only survivors are ranked.
+      if (area > lower && area <= upper && !hitsObstacle(dx, dy)) {
+        band.push({ dx, dy, links: linkLength(dx, dy), move: Math.abs(dx) + Math.abs(dy) });
+      }
+    });
+    band.sort((a, b) => a.links - b.links || a.move - b.move);
+    for (const candidate of band) {
+      if (clear(candidate.dx, candidate.dy)) return { dx: candidate.dx, dy: candidate.dy };
+    }
+    if (upper >= maxArea) break;
+    lower = upper;
+    upper *= 1.05;
+  }
+  // Unreachable: moving past the right edge of every obstacle always clears.
+  return { dx: pinned.x2 + gap - block.x1, dy: 0 };
+}
+
 export function computeLayout(graph: Graph): LayoutResult {
   // Build position lookup
   const posMap = new Map(graph.positions.map(p => [p.id, p]));
@@ -602,13 +952,16 @@ export function computeLayout(graph: Graph): LayoutResult {
   });
   g.setDefaultEdgeLabel(() => ({}));
 
-  // Add nodes
+  // Add nodes. Pinned nodes stay out of dagre: it cannot honour their
+  // coordinates, and a slot reserved for them would only be dead space.
+  const nodeSizes = new Map<string, { width: number; height: number }>();
   for (const node of graph.nodes) {
     const pos = posMap.get(node.id);
     const size = pos?.width && pos?.height
       ? { width: pos.width, height: pos.height }
       : measureNode(node);
-    g.setNode(node.id, { width: size.width, height: size.height });
+    nodeSizes.set(node.id, size);
+    if (!pos) g.setNode(node.id, { width: size.width, height: size.height });
   }
 
   // Add cluster nodes and wire up the containment tree. Cluster keys are
@@ -666,13 +1019,12 @@ export function computeLayout(graph: Graph): LayoutResult {
   const nodeMap = new Map<string, LayoutNode>();
 
   for (const node of graph.nodes) {
-    const dagreNode = g.node(node.id);
-    if (!dagreNode) continue;
-
     const pos = posMap.get(node.id);
+    const dagreNode = pos ? undefined : g.node(node.id);
+    if (!pos && !dagreNode) continue;
+
     let x: number, y: number;
-    const width = dagreNode.width as number;
-    const height = dagreNode.height as number;
+    const { width, height } = nodeSizes.get(node.id)!;
 
     if (pos) {
       // Use explicit position
@@ -680,8 +1032,8 @@ export function computeLayout(graph: Graph): LayoutResult {
       y = pos.y;
     } else {
       // Convert dagre center coords to top-left
-      x = (dagreNode.x as number) - width / 2;
-      y = (dagreNode.y as number) - height / 2;
+      x = (dagreNode!.x as number) - width / 2;
+      y = (dagreNode!.y as number) - height / 2;
     }
 
     const layoutNode: LayoutNode = { id: node.id, x, y, width, height, node };
@@ -716,14 +1068,14 @@ export function computeLayout(graph: Graph): LayoutResult {
   const labelSpans = (axisX: boolean) => labelRects.map(rect => (axisX
     ? { center: rect.x + rect.width / 2, extent: rect.width }
     : { center: rect.y + rect.height / 2, extent: rect.height }));
-  // Explicitly positioned nodes keep absolute coordinates, so shifting the
-  // auto-laid content around them could create collisions — leave graphs
-  // that mix pinned and auto nodes uncompressed.
-  if (clusterKeys.size === 0 && labelRects.length > 0 && explicitPositionIds.size === 0) {
+  // Only dagre-placed content is compressed. Pinned nodes keep their
+  // absolute coordinates; the auto-laid block is moved clear of them below.
+  const autoNodes = layoutNodes.filter(node => !explicitPositionIds.has(node.id));
+  if (clusterKeys.size === 0 && labelRects.length > 0 && autoNodes.length > 0) {
     // Flat graphs: dagre widens every labelled rank gap by the label's full
     // extent. Pull those gaps back to the plain ranksep whenever the label fits.
     const labels = labelSpans(rankAxisIsX);
-    const rects: Rect[] = [...layoutNodes, ...reservedRects];
+    const rects: Rect[] = [...autoNodes, ...reservedRects];
     const map = buildAxisCompressionMap(
       rects.map(rect => (rankAxisIsX
         ? [rect.x, rect.x + rect.width]
@@ -739,12 +1091,12 @@ export function computeLayout(graph: Graph): LayoutResult {
       },
     );
     if (rankAxisIsX) mapX = map; else mapY = map;
-    for (const node of layoutNodes) {
+    for (const node of autoNodes) {
       node.x = mapX(node.x);
       node.y = mapY(node.y);
     }
   }
-  if (clusterKeys.size > 0 && explicitPositionIds.size === 0) {
+  if (clusterKeys.size > 0 && autoNodes.length > 0) {
     // Cluster border positions (pre-compression coordinates). A gap crossed
     // by group-box edges must keep room for each border it contains: top
     // edges carry padding plus the label strip, the other edges padding only.
@@ -767,6 +1119,7 @@ export function computeLayout(graph: Graph): LayoutResult {
       ends: number[],
       startCost: number,
       labels: Array<{ center: number; extent: number }>,
+      floor: number,
     ) =>
       (gapStart: number, gapEnd: number): number => {
         let needed = 0;
@@ -779,27 +1132,127 @@ export function computeLayout(graph: Graph): LayoutResult {
             labelNeed = Math.max(labelNeed, label.extent + EDGE_LABEL_CLEARANCE * 2);
           }
         }
-        // The label's own clearance stands in for the daylight margin.
-        return Math.max(MAX_RANK_GAP, needed + (labelNeed > 0 ? labelNeed : 32));
+        // Borders get daylight between them; the label's own clearance stands
+        // in for it. Borders are counted per gap, so the floor only has to be
+        // the plain spacing: a chain inside one group, or one that merely
+        // passes another group's edge, reads like the same chain ungrouped.
+        const daylight = labelNeed > 0 ? labelNeed : (needed > 0 ? 32 : 0);
+        return Math.max(floor, needed + daylight);
       };
-    const occupiedRects: Rect[] = [...layoutNodes, ...reservedRects];
+    const occupiedRects: Rect[] = [...autoNodes, ...reservedRects];
     const occupiedX = rankAxisIsX ? occupiedRects : [...occupiedRects, ...labelRects];
     const occupiedY = rankAxisIsX ? [...occupiedRects, ...labelRects] : occupiedRects;
     mapX = buildAxisCompressionMap(
       occupiedX.map(rect => [rect.x, rect.x + rect.width] as [number, number]),
-      makeGapBudget(startsX, endsX, GROUP_PADDING, rankAxisIsX ? labelSpans(true) : []),
+      makeGapBudget(
+        startsX, endsX, GROUP_PADDING,
+        rankAxisIsX ? labelSpans(true) : [],
+        rankAxisIsX ? DEFAULT_RANK_SEP : MAX_RANK_GAP,
+      ),
     );
     mapY = buildAxisCompressionMap(
       occupiedY.map(rect => [rect.y, rect.y + rect.height] as [number, number]),
-      makeGapBudget(startsY, endsY, GROUP_PADDING + GROUP_LABEL_HEIGHT, rankAxisIsX ? [] : labelSpans(false)),
+      makeGapBudget(
+        startsY, endsY, GROUP_PADDING + GROUP_LABEL_HEIGHT,
+        rankAxisIsX ? [] : labelSpans(false),
+        rankAxisIsX ? MAX_RANK_GAP : DEFAULT_RANK_SEP,
+      ),
     );
-    for (const node of layoutNodes) {
+    for (const node of autoNodes) {
       node.x = mapX(node.x);
       node.y = mapY(node.y);
     }
   }
 
   const compactedNodeIds = compactTerminalGroupMembers(graph, nodeMap, explicitPositionIds);
+
+  // Graphs mixing pinned and auto nodes: dagre never saw the pinned ones, so
+  // move the auto-laid block (rigidly) to the densest spot that clears every
+  // pinned node and every group made only of pinned nodes.
+  if (autoNodes.length > 0 && autoNodes.length < layoutNodes.length) {
+    const offset = placeAutoBlock(
+      graph, g, nodeMap, explicitPositionIds, placeholderKeys, edgeLabels, mapX, mapY,
+    );
+    if (offset.dx !== 0 || offset.dy !== 0) {
+      const baseX = mapX;
+      const baseY = mapY;
+      mapX = value => baseX(value) + offset.dx;
+      mapY = value => baseY(value) + offset.dy;
+      for (const node of autoNodes) {
+        node.x += offset.dx;
+        node.y += offset.dy;
+      }
+    }
+  }
+
+  // Group rectangles come from the padded bounding box of members and child
+  // groups. Dagre's own cluster rectangles are deliberately not used: their
+  // border ranks extend far past the content, inflating boxes with dead
+  // space. Compound placement plus gap compression already guarantee that
+  // non-members sit at least a band gap away, so snug boxes stay disjoint.
+  const placeholderRects = new Map<Group, Rect>();
+  for (const [group, key] of placeholderKeys) {
+    const rect = dagreRect(g.node(key));
+    if (rect) {
+      placeholderRects.set(group, {
+        x: mapX(rect.x),
+        y: mapY(rect.y),
+        width: rect.width,
+        height: rect.height,
+      });
+    }
+  }
+  const layoutGroups = computeGroupLayouts(graph.groups, nodeMap, placeholderRects);
+
+  // Group boxes holding one endpoint of an edge but not the other: a squared-
+  // off end leg runs just outside the outermost such box, clear of its title
+  // (and, entering, clear of the other boxes its run passes over).
+  const groupBoxesById = new Map<string, LayoutGroup[]>();
+  for (const layoutGroup of layoutGroups) {
+    for (const id of memberIdSet(layoutGroup.group)) {
+      if (!groupBoxesById.has(id)) groupBoxesById.set(id, []);
+      groupBoxesById.get(id)!.push(layoutGroup);
+    }
+  }
+  const forward = graph.direction === 'BT' || graph.direction === 'RL' ? -1 : 1;
+  /** Rank coordinate just outside the boxes holding `inside` but not `other` */
+  const clearOfGroups = (
+    inside: string,
+    other: string,
+    side: 'exit' | 'entry',
+    // Entering only: the sideways run's cross-axis span. Boxes it would pass
+    // over on the way (between the two ends) are cleared too.
+    runSpan?: [number, number],
+  ): number | undefined => {
+    const otherBoxes = groupBoxesById.get(other) ?? [];
+    const boxes = (groupBoxesById.get(inside) ?? []).filter(box => !otherBoxes.includes(box));
+    const insideNode = nodeMap.get(inside);
+    const otherNode = nodeMap.get(other);
+    if (runSpan && insideNode && otherNode) {
+      const rankOf = (node: LayoutNode) => (rankAxisIsX ? node.x + node.width / 2 : node.y + node.height / 2);
+      const lo = Math.min(rankOf(insideNode), rankOf(otherNode));
+      const hi = Math.max(rankOf(insideNode), rankOf(otherNode));
+      for (const box of layoutGroups) {
+        if (otherBoxes.includes(box) || boxes.includes(box)) continue;
+        const crossStart = rankAxisIsX ? box.y : box.x;
+        const crossEnd = crossStart + (rankAxisIsX ? box.height : box.width);
+        if (crossEnd <= runSpan[0] || crossStart >= runSpan[1]) continue;
+        const near = forward > 0 ? (rankAxisIsX ? box.x : box.y) : (rankAxisIsX ? box.x + box.width : box.y + box.height);
+        if (near > lo && near < hi) boxes.push(box);
+      }
+    }
+    if (boxes.length === 0) return undefined;
+    // Leaving moves along the flow, entering arrives against it.
+    const dir = side === 'exit' ? forward : -forward;
+    const edges = boxes.map(box => {
+      const start = rankAxisIsX ? box.x : box.y;
+      const end = start + (rankAxisIsX ? box.width : box.height);
+      return dir > 0 ? end : start;
+    });
+    return dir > 0
+      ? Math.max(...edges) + FLAT_LEG_GROUP_MARGIN
+      : Math.min(...edges) - FLAT_LEG_GROUP_MARGIN;
+  };
 
   // Extract edge points.
   const layoutEdges: LayoutEdge[] = [];
@@ -823,12 +1276,34 @@ export function computeLayout(graph: Graph): LayoutResult {
       && !compactedNodeIds.has(edge.from)
       && !compactedNodeIds.has(edge.to);
     if (routed) {
-      points = (dagreEdge.points as Array<{ x: number; y: number }>).map(p => ({
+      const mapped = (dagreEdge.points as Array<{ x: number; y: number }>).map(p => ({
         x: mapX(p.x),
         y: mapY(p.y),
       }));
+      const crossOf = (p: Point) => (rankAxisIsX ? p.y : p.x);
+      const penultimate = mapped[Math.max(0, mapped.length - 2)];
+      const runSpan: [number, number] = [
+        Math.min(crossOf(penultimate), crossOf(toCenter)),
+        Math.max(crossOf(penultimate), crossOf(toCenter)),
+      ];
+      points = squareFlatEndLegs(
+        mapped,
+        fromCenter,
+        toCenter,
+        rankAxisIsX,
+        {
+          exitRank: clearOfGroups(edge.from, edge.to, 'exit'),
+          entryRank: clearOfGroups(edge.to, edge.from, 'entry', runSpan),
+          forward,
+          labelPoint: edgeLabels[index] && Number.isFinite(dagreEdge.x)
+            ? { x: mapX(dagreEdge.x as number), y: mapY(dagreEdge.y as number) }
+            : undefined,
+        },
+      );
     } else if (edge.from === edge.to) {
       points = selfLoopPoints(fromNode);
+    } else if (compactedNodeIds.has(edge.to) && !posMap.has(edge.from) && !posMap.has(edge.to)) {
+      points = approachFromFlowSide(fromCenter, toNode, graph.direction ?? 'TB');
     } else {
       points = [{ ...fromCenter }, { ...toCenter }];
     }
@@ -852,6 +1327,9 @@ export function computeLayout(graph: Graph): LayoutResult {
           x: fromNode.x + fromNode.width + SELF_LOOP_REACH + 4 + label.width / 2,
           y: fromNode.y + fromNode.height / 2,
         };
+      } else if (points.length === 3 && compactedNodeIds.has(edge.to)) {
+        // On the run toward the row, not at its turn beside sibling targets
+        center = { x: (points[0].x + points[1].x) / 2, y: (points[0].y + points[1].y) / 2 };
       } else {
         center = pathMidpoint(points);
       }
@@ -860,25 +1338,6 @@ export function computeLayout(graph: Graph): LayoutResult {
     }
     layoutEdges.push(layoutEdge);
   });
-
-  // Group rectangles come from the padded bounding box of members and child
-  // groups. Dagre's own cluster rectangles are deliberately not used: their
-  // border ranks extend far past the content, inflating boxes with dead
-  // space. Compound placement plus gap compression already guarantee that
-  // non-members sit at least a band gap away, so snug boxes stay disjoint.
-  const placeholderRects = new Map<Group, Rect>();
-  for (const [group, key] of placeholderKeys) {
-    const rect = dagreRect(g.node(key));
-    if (rect) {
-      placeholderRects.set(group, {
-        x: mapX(rect.x),
-        y: mapY(rect.y),
-        width: rect.width,
-        height: rect.height,
-      });
-    }
-  }
-  const layoutGroups = computeGroupLayouts(graph.groups, nodeMap, placeholderRects);
 
   // Compute total bounds
   const allX = [

@@ -435,3 +435,57 @@ describe('graphToJsonCanvas edge ends', () => {
     expect(json.edges[2]).toMatchObject({ color: '#f00' });
   });
 });
+
+// glypho.dev editor: both of these showed a bare "Unexpected character" with
+// no hint at the fix.
+describe('hints for punctuation in bare labels', () => {
+  it.each([
+    ['test:d Pass?', 'Pass?', 8],
+    // The two lines from the editor's own examples
+    ['dir:d Direction?', 'Direction?', 7],
+    ['residual:c + #aef', '+', 12],
+    ['residual:c +', '+', 12],
+    ['x:r C++', 'C++', 5],
+    ['a>b ok?', 'ok?', 5],
+  ])('%s suggests quoting the whole label', (source, word, column) => {
+    const { errors } = parse(source);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ line: 1, column });
+    expect(errors[0].message).toContain(`in '${word}'`);
+    expect(errors[0].message).toContain(`must be quoted: "${word}"`);
+  });
+
+  it('parses once the label is quoted', () => {
+    expect(parse('test:d "Pass?"\nresidual:c "+"').errors).toEqual([]);
+  });
+});
+
+describe('hints for bare style values with spaces', () => {
+  it('names the whole value and the quoted property', () => {
+    const { graph, errors } = parse('$:r{font:Noto Sans!}');
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ line: 1, column: 10 });
+    expect(errors[0].message).toBe(`Style value 'Noto Sans!' must be quoted (a value with spaces): font:"Noto Sans!"`);
+    // No cascade: `Sans` is not mistaken for a property missing its colon
+    expect(graph.styles[0].properties).toEqual({ font: 'Noto Sans!' });
+  });
+
+  it('stops the value at the next property', () => {
+    const { graph, errors } = parse('$:r{font:Noto Sans fill:#fff stroke-width:2}');
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toContain('font:"Noto Sans"');
+    expect(graph.styles[0].properties).toEqual({ font: 'Noto Sans', fill: '#fff', 'stroke-width': '2' });
+  });
+
+  it('shows the quoted form for a single bad word too', () => {
+    const { errors } = parse('$:r{note:hi!}');
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toContain('note:"hi!"');
+  });
+
+  it('parses once the value is quoted', () => {
+    const { graph, errors } = parse('$:r{font:"Noto Sans!" fill:#fff}');
+    expect(errors).toEqual([]);
+    expect(graph.styles[0].properties).toEqual({ font: 'Noto Sans!', fill: '#fff' });
+  });
+});

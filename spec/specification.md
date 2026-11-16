@@ -307,6 +307,7 @@ login@100,200
 - Coordinates are integers only (no decimals)
 - Origin (0,0) is typically top-left
 - Negative coordinates are not yet supported (using one is a parse error)
+- A graph may mix positioned and auto-laid nodes: positioned nodes keep their exact coordinates, and the renderer moves the auto-laid part as a whole so it clears them (and any group made only of positioned nodes)
 
 #### Size
 
