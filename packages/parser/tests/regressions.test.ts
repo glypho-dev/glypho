@@ -83,10 +83,25 @@ describe('style values', () => {
     });
   });
 
-  it('accepts any run of non-reserved characters', () => {
-    const { graph, errors } = parse('$:r{width:50% font-family:sans-serif}');
+  it('accepts percentages, hyphenated words and dash lists bare', () => {
+    const { graph, errors } = parse('$:r{width:50% font-family:sans-serif stroke-dasharray:5,5}');
     expect(errors).toEqual([]);
-    expect(graph.styles[0].properties).toEqual({ width: '50%', 'font-family': 'sans-serif' });
+    expect(graph.styles[0].properties).toEqual({
+      width: '50%', 'font-family': 'sans-serif', 'stroke-dasharray': '5,5',
+    });
+  });
+
+  it.each(['日本', '$$!!', 'a/b', 'x;y'])('requires quotes for bare value %s', (value) => {
+    const { errors } = parse(`$:r{font:${value}}`);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ line: 1, column: 10 });
+    expect(errors[0].message).toMatch(/must be quoted/);
+  });
+
+  it('accepts the same values when quoted, and serializes them quoted', () => {
+    const { graph, errors } = parse('$:r{font:"日本"}');
+    expect(errors).toEqual([]);
+    expect(graphToGlypho(graph)).toContain('font:"日本"');
   });
 
   it('keeps integers and quoted values working', () => {

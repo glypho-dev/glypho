@@ -350,7 +350,7 @@ $.highlight{fill:#ff0 stroke:#f00}
 
 Colors must be hex — named colors (e.g. `fill:red`) are not valid and fall back to a gray default. A value starting with `#` must be a valid 3- or 6-digit hex color. Other properties (e.g. `font-family`) parse without error but have no effect on rendered output.
 
-Unquoted values are any run of non-whitespace characters other than the reserved `> ~ = : @ ^ # { } "`, so decimals and units need no quotes: `$:r{stroke-width:1.5 opacity:0.5 font-size:12px}`. For property values with spaces, use quotes: `$:r{data-note:"two words"}`.
+Unquoted values may use ASCII letters, digits and `. _ % , + -`, so decimals, units and dash lists need no quotes: `$:r{stroke-width:1.5 opacity:0.5 font-size:12px}`. Anything else (spaces, non-ASCII, other punctuation) must be quoted: `$:r{data-note:"two words"}`.
 
 A shape selector must name one of the six shapes (`$:zzz{}` is a parse error).
 

@@ -122,7 +122,7 @@ digit           = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
 hex_digit       = digit | "a" | "b" | "c" | "d" | "e" | "f"
                 | "A" | "B" | "C" | "D" | "E" | "F" ;
 whitespace      = " " | "\t" ;
-value_char      = ? any non-whitespace character except the reserved > ~ = : @ ^ # { } " ? ;
+value_char      = letter | digit | "." | "_" | "%" | "," | "+" | "-" ;
 char            = ? any character except a double quote, a backslash or a line break ? ;
 line_char       = ? any character except a line break ? ;
 any_char        = ? any character ? ;

@@ -163,7 +163,7 @@ describe('parseDot', () => {
 
     it('parses edge color', () => {
       const { graph } = parseDot('digraph { a -> b [color="red"]; }');
-      expect(graph.edges[0].color).toBe('#ff0000') // named colors become hex: .g has no named colors;
+      expect(graph.edges[0].color).toBe('#ff0000'); // named colors become hex: .g has no named colors
     });
   });
 

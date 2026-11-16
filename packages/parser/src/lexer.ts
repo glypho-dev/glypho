@@ -58,6 +58,9 @@ function isIdContinue(ch: string): boolean {
 /** Characters that end a raw style value: whitespace and the grammar's reserved set */
 const STYLE_VALUE_STOP = new Set([' ', '\t', '\n', '\r', '>', '~', '=', ':', '@', '^', '#', '{', '}', '"']);
 
+/** A bare style value is ASCII-only, like bare labels; anything else must be quoted */
+const BARE_STYLE_VALUE = /^[A-Za-z0-9._%,+-]+$/;
+
 export class Lexer {
   private input: string;
   private pos = 0;
@@ -210,6 +213,13 @@ export class Lexer {
     while (this.pos < this.input.length && !STYLE_VALUE_STOP.has(this.input[this.pos])) {
       value += this.input[this.pos];
       this.advance();
+    }
+    if (!BARE_STYLE_VALUE.test(value)) {
+      this.errors.push({
+        message: `Style value '${value}' must be quoted — bare values may only use ASCII letters, digits and . _ % , + -`,
+        line: this.line,
+        column: startCol,
+      });
     }
     this.tokens.push({ type: TokenType.STYLE_VALUE, value, line: this.line, column: startCol });
   }

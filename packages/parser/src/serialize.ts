@@ -36,7 +36,7 @@ function quoteLabel(raw: string): string {
 const HEX_COLOR = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
 /** Style values stay bare when they re-lex as one value token */
-const BARE_STYLE_VALUE = /^[^\s>~=:@^#{}"]+$/;
+const BARE_STYLE_VALUE = /^[A-Za-z0-9._%,+-]+$/;
 
 function formatStyleValue(v: string): string {
   if (HEX_COLOR.test(v) || BARE_STYLE_VALUE.test(v)) return v;
