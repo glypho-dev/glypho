@@ -4,7 +4,7 @@ import { loadGraph, printParseErrors } from '../../lib/graph-input.js';
 import { FROM_HELP } from '../../lib/detect-format.js';
 
 export const toMermaidCommand = new Command('mermaid')
-  .description('Convert .g to Mermaid format')
+  .description('Convert .g (or DOT) input to Mermaid format')
   .usage('[file]')
   .argument('[file]', 'Input file (defaults to stdin when piped; use - for stdin)')
   .option('--from <format>', FROM_HELP)

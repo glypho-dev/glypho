@@ -32,9 +32,9 @@ Compared to formats that solve the same problem (text/JSON notation for directed
 | Excalidraw JSON | ~500%           |
 | JSON Canvas     | 100%            |
 | PlantUML        | ~70%            |
-| Mermaid         | ~50%            |
-| Graphviz DOT    | ~45%            |
-| **.g format**   | **~20%**        |
+| Graphviz DOT    | ~31%            |
+| Mermaid         | ~25%            |
+| **.g format**   | **~17%**        |
 
 ---
 

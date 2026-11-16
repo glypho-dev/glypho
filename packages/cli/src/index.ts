@@ -38,10 +38,10 @@ Examples:
 
 Command reference:
   glypho check [file] [--json] [--from <g|mermaid|dot>]
-    Validate Glypho input and report parse errors.
+    Validate .g, Mermaid, or DOT input and report parse errors.
 
   glypho parse [file] [--compact] [--from <g|mermaid|dot>]
-    Parse Glypho input and print the JSON AST.
+    Parse .g, Mermaid, or DOT input and print the JSON AST.
 
   glypho info [file] [--json] [--from <g|mermaid|dot>]
     Show node, edge, group, and token-count stats.

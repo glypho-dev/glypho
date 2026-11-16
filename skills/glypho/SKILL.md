@@ -156,7 +156,7 @@ Three selector types:
 | `.class` | nodes in that class | `$.critical { fill:#fee stroke:#c00 }` |
 | `#id` | specific node | `$#login { fill:#0af }` |
 
-Properties are **space-separated** (not semicolons). The renderer applies exactly three properties: `fill`, `stroke` (hex colors only — `#f00` or `#ff0000`; named colors like `red` are ignored), and `stroke-width` (a whole number such as `2`; decimals like `1.5` are a parse error). Any other property parses without error but has no effect on output.
+Properties are **space-separated** (not semicolons). The renderer applies exactly three properties: `fill`, `stroke` (hex colors only — `#f00` or `#ff0000`; named colors like `red` are ignored), and `stroke-width` (a number such as `2` or `1.5`). Bare values may only use ASCII letters, digits and `. _ % , + -`; quote anything else (`data-note:"two words"`). Any other property parses without error but has no effect on output.
 
 ### Positioning
 

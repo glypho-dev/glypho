@@ -1,6 +1,6 @@
 # Glypho - `.g` Format
 
-LLM-optimized graph notation format. ~20% token cost vs JSON Canvas.
+LLM-optimized graph notation format. ~17% token cost vs JSON Canvas.
 
 ## Commands
 
