@@ -12,6 +12,9 @@
   },
   "keywords": ["graph", "diagram", "notation", "glypho", "parser", "renderer", "svg", "react"],
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -22,6 +25,11 @@
     "./react": {
       "types": "./dist/react.d.ts",
       "default": "./dist/react.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "react": ["./dist/react.d.ts"]
     }
   },
   "files": ["dist"],

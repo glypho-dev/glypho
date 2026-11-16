@@ -113,10 +113,13 @@ const { graph } = parse(source)
 
 ### `@glypho/renderer` (React)
 
+Everything from `@glypho/renderer/svg`, plus:
+
 | Export | Description |
 |--------|-------------|
 | `<GlyphoGraph>` | React component with optional `onNodeClick`/`onEdgeClick` props |
-| `computeLayout(graph)` | Graph AST → positioned layout data |
+
+Both entry points also export the sizing helpers `measureNode`, `measureText`, `measureLine`, `wrapLabel`, `LINE_HEIGHT` and `MAX_LABEL_WIDTH`, and the style helpers `resolveNodeStyle` and `resolveEdgeColor`. TypeScript projects on `"moduleResolution": "node10"` resolve `@glypho/renderer/svg` types through `typesVersions`.
 
 ### Options
 

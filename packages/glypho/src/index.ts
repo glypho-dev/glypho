@@ -17,7 +17,8 @@ export type {
 export {
   render, renderSvg,
   computeLayout,
-  measureNode, measureText,
+  measureNode, measureText, measureLine, wrapLabel,
+  LINE_HEIGHT, MAX_LABEL_WIDTH,
   resolveNodeStyle, resolveEdgeColor,
 } from '@glypho/renderer/svg';
 

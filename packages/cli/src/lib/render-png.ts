@@ -1,4 +1,5 @@
 import { Resvg } from '@resvg/resvg-js';
+import { CliError } from './errors.js';
 
 export interface RenderPngOptions {
   scale?: number;
@@ -39,7 +40,29 @@ function autoScale(svg: string): number {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.ceil(needed)));
 }
 
+const PROBE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>';
+
+/**
+ * Check that resvg accepts a background color before rendering, so a typo
+ * gives a clean error instead of resvg's opaque "invalid value" failure.
+ * resvg supports hex, rgb()/rgba(), hsl()/hsla(), transparent and the basic
+ * CSS color names.
+ */
+export function validatePngBackground(background: string): void {
+  try {
+    new Resvg(PROBE_SVG, { background }).render();
+  } catch {
+    throw new CliError(
+      `invalid --background color '${background}' for PNG output (use a hex value like #fff, rgb()/hsl(), a basic color name, or transparent)`,
+    );
+  }
+}
+
 export function renderPng(svg: string, options: RenderPngOptions = {}): Buffer {
+  if (options.scale !== undefined && !(Number.isFinite(options.scale) && options.scale > 0)) {
+    throw new CliError(`invalid --scale ${options.scale}; expected a positive number`);
+  }
+  if (options.background !== undefined) validatePngBackground(options.background);
   const scale = options.scale ?? autoScale(svg);
   const resvg = new Resvg(svg, {
     fitTo: { mode: 'zoom' as const, value: scale },

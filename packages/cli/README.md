@@ -23,6 +23,7 @@ npm install -g @glypho/cli
 ```bash
 glypho check diagram.g              # human-readable validation
 glypho check diagram.g --json       # machine-readable output
+glypho check flow.mmd               # Mermaid and DOT are detected by extension
 ```
 
 ### Render
@@ -31,6 +32,7 @@ glypho check diagram.g --json       # machine-readable output
 glypho render diagram.g             # → diagram.svg
 glypho render diagram.g -f png      # → diagram.png
 glypho render diagram.g -o out.svg  # custom output path
+glypho render diagram.g -o out/diagram.png  # format follows the extension; out/ is created
 glypho render flow.mmd              # Mermaid input → SVG
 glypho render graph.dot -f png      # DOT input → PNG
 glypho render diagram.g --width 800 --height 600
@@ -38,6 +40,8 @@ glypho render diagram.g -f png --scale 3
 glypho render diagram.g -f png -b transparent  # transparent PNG (default is white)
 glypho render diagram.g -b '#eee'              # SVG with background color
 ```
+
+The output format follows the `-o` extension (`.svg` or `.png`); `-f` sets it explicitly and must agree with that extension. `render` creates missing output directories and refuses to overwrite its input file. `--width`/`--height` take positive integers, `--scale` a positive number.
 
 ### Preview
 
@@ -69,13 +73,15 @@ glypho info diagram.g --json        # machine-readable stats
 
 ## Piping
 
-Commands accept `-` for stdin, and if no file is given they read from stdin when input is piped:
+Commands accept `-` for stdin, and if no file is given they read from stdin when input is piped. Stdin is read as `.g`; pass `--from mermaid` or `--from dot` to `check`, `parse`, `info`, `render` or `to mermaid` for other formats. Empty input is an error.
 
 ```bash
 echo 'a > b > c' | glypho check
-echo 'a:c A\nb:p B\na > b' | glypho render -o pipe.svg
+printf 'a:c A\nb:p B\na > b\n' | glypho render -o pipe.svg
 echo 'a > b' | glypho to mermaid
 cat flow.mmd | glypho from mermaid
+cat flow.mmd | glypho check --from mermaid
+cat graph.dot | glypho render --from dot -o graph.png
 ```
 
 `render` is the only file-producing conversion command. Use `to` / `from` for text format conversion, use `render` for SVG or PNG output, and use `preview` only to open an existing SVG.
@@ -84,16 +90,16 @@ cat flow.mmd | glypho from mermaid
 
 `glypho info` shows how `.g` compares to other formats:
 
-```
-$ glypho info diagram.g
-
-  Nodes: 5  Edges: 5  Groups: 1
+```console
+$ glypho info idea-to-ship.g
+idea-to-ship.g
+  Nodes: 5   Edges: 5   Groups: 1
 
   Format        Tokens
-  .g                28
-  Mermaid           52  (1.9x)
-  Graphviz DOT      68  (2.4x)
-  JSON Canvas      143  (5.1x)
+  .g                59
+  Mermaid           96  (1.6x)
+  Graphviz DOT     134  (2.3x)
+  JSON Canvas      457  (7.7x)
 ```
 
 ## License
